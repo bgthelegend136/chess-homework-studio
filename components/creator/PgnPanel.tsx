@@ -59,10 +59,11 @@ export function PgnPanel({
   if (editing || !state.plies.length) {
     return (
       <div className="flex flex-col gap-3">
-        <label className="text-xs font-medium uppercase tracking-wide text-stone-500">
+        <label htmlFor="pgn-input" className="text-xs font-medium uppercase tracking-wide text-stone-500">
           PGN
         </label>
         <textarea
+          id="pgn-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={7}
