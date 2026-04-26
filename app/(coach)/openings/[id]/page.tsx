@@ -2,26 +2,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireCoach } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type {
-  OpeningMasteryLevel,
-  OpeningPosition,
-  OpeningPositionProgress,
-  OpeningRepertoire,
-} from '@/lib/types';
+import type { OpeningPosition, OpeningPositionProgress, OpeningRepertoire } from '@/lib/types';
+import { LineCoverageExplorer } from './LineCoverageExplorer';
 
 interface Props {
   params: { id: string };
-}
-
-const masteryClasses: Record<OpeningMasteryLevel, string> = {
-  new: 'border-stone-200 bg-stone-50 text-stone-700',
-  learning: 'border-amber-200 bg-amber-50 text-amber-800',
-  weak: 'border-red-200 bg-red-50 text-red-800',
-  mastered: 'border-green-200 bg-green-50 text-green-800',
-};
-
-function percent(part: number, total: number): number {
-  return total > 0 ? Math.round((part / total) * 100) : 0;
 }
 
 export default async function OpeningDetailPage({ params }: Props) {
@@ -41,7 +26,7 @@ export default async function OpeningDetailPage({ params }: Props) {
     .from('opening_positions')
     .select('*')
     .eq('repertoire_id', params.id)
-    .order('ply_index');
+    .order('line_path');
 
   const positions = (positionRows ?? []) as OpeningPosition[];
 
@@ -51,145 +36,75 @@ export default async function OpeningDetailPage({ params }: Props) {
     .eq('coach_id', coach.id)
     .eq('repertoire_id', params.id);
 
-  const progressByPosition = new Map(
-    ((progressRows ?? []) as OpeningPositionProgress[]).map((progress) => [
-      progress.position_id,
-      progress,
-    ]),
-  );
-
-  const masteredCount = positions.filter(
-    (position) => progressByPosition.get(position.id)?.mastery_level === 'mastered',
-  ).length;
-  const mainlinePositions = positions.filter((position) => position.is_mainline);
-  const mainlineMastered = mainlinePositions.filter(
-    (position) => progressByPosition.get(position.id)?.mastery_level === 'mastered',
-  ).length;
-  const positionMasteryPct = percent(masteredCount, positions.length);
-  const mainlineMasteryPct = percent(mainlineMastered, mainlinePositions.length);
   const typedRepertoire = repertoire as OpeningRepertoire;
+  const importReport = typedRepertoire.import_report as {
+    branches_detected?: number;
+    comments_preserved?: number;
+    warnings?: string[];
+    skipped_branches?: number;
+    parser_mode_used?: string;
+  };
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="mb-6 text-sm text-stone-500">
-        <Link href="/openings" className="hover:text-stone-800">
-          Openings
-        </Link>
-        <span className="mx-1">/</span>
-        <span className="text-stone-800">{typedRepertoire.name}</span>
-      </div>
-
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-stone-500">
-            {typedRepertoire.side_to_train === 'white' ? 'White' : 'Black'} repertoire
-          </p>
-          <h1 className="text-2xl font-semibold text-stone-800">
-            {typedRepertoire.name}
-          </h1>
-          <p className="mt-1 text-sm text-stone-500">
-            {positions.length} trainable positions · mainline-only MVP parser
-          </p>
+    <div className="min-h-full bg-stone-100">
+      <div className="mx-auto w-full max-w-6xl p-6">
+        <div className="mb-6 text-sm text-stone-500">
+          <Link href="/openings" className="hover:text-stone-800">
+            Openings
+          </Link>
+          <span className="mx-1">/</span>
+          <span className="text-stone-800">{typedRepertoire.name}</span>
         </div>
-        <Link
-          href={`/openings/${params.id}/train`}
-          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-        >
-          Start training
-        </Link>
-      </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-            Position mastery
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-stone-800">
-            {masteredCount}/{positions.length}
-          </p>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
-            <div
-              className="h-full bg-green-500"
-              style={{ width: `${positionMasteryPct}%` }}
-            />
+        <div className="mb-6 rounded-lg bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-stone-500">
+                {typedRepertoire.side_to_train === 'white' ? 'White' : 'Black'} repertoire
+              </p>
+              <h1 className="text-2xl font-semibold text-stone-900">
+                {typedRepertoire.name}
+              </h1>
+              <p className="mt-1 text-sm text-stone-500">
+                {positions.length} trainable moves imported from the PGN map
+              </p>
+            </div>
+            <Link
+              href={`/openings/${params.id}/train`}
+              className="rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              Start training
+            </Link>
           </div>
-          <p className="mt-2 text-xs text-stone-500">{positionMasteryPct}% mastered</p>
         </div>
 
-        <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-            Mainline mastery
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-stone-800">
-            {mainlineMastered}/{mainlinePositions.length}
-          </p>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
-            <div
-              className="h-full bg-green-500"
-              style={{ width: `${mainlineMasteryPct}%` }}
-            />
+        <LineCoverageExplorer
+          repertoireId={params.id}
+          sideToTrain={typedRepertoire.side_to_train}
+          positions={positions}
+          progressRows={(progressRows ?? []) as OpeningPositionProgress[]}
+        />
+
+        <section className="mt-6 rounded-lg bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-stone-800">Import report</h2>
+          <div className="mt-3 grid gap-2 text-xs text-stone-600 sm:grid-cols-4">
+            <p>Mode: {importReport.parser_mode_used ?? 'unknown'}</p>
+            <p>Branches: {importReport.branches_detected ?? 0}</p>
+            <p>Comments: {importReport.comments_preserved ?? 0}</p>
+            <p>Skipped: {importReport.skipped_branches ?? 0}</p>
           </div>
-          <p className="mt-2 text-xs text-stone-500">{mainlineMasteryPct}% mastered</p>
-        </div>
+          {(importReport.warnings?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <p className="font-medium">Warnings</p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {importReport.warnings?.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
       </div>
-
-      <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-col gap-1">
-          <h2 className="text-sm font-semibold text-stone-800">
-            Repertoire visualizer
-          </h2>
-          <p className="text-xs text-stone-500">
-            Mainline path with mastery color per trainable position. Branch visualizer
-            support arrives with reliable variation parsing.
-          </p>
-        </div>
-
-        {positions.length === 0 ? (
-          <p className="text-sm text-stone-500">No trainable positions found.</p>
-        ) : (
-          <ol className="space-y-2">
-            {positions.map((position, index) => {
-              const progress = progressByPosition.get(position.id);
-              const level = progress?.mastery_level ?? 'new';
-              return (
-                <li
-                  key={position.id}
-                  className={`rounded border px-3 py-2 ${masteryClasses[level]}`}
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {index + 1}. {position.opponent_move_san && (
-                          <span className="font-normal opacity-75">
-                            after {position.opponent_move_san}:{' '}
-                          </span>
-                        )}
-                        <span className="font-mono">{position.expected_move_san}</span>
-                        {position.annotation && (
-                          <span className="ml-1 font-semibold">
-                            {position.annotation}
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-xs opacity-75">
-                        {level} · streak {progress?.current_streak ?? 0} ·{' '}
-                        {progress?.correct_count ?? 0} correct /{' '}
-                        {progress?.wrong_count ?? 0} wrong
-                      </p>
-                    </div>
-                    <Link
-                      href={`/openings/${params.id}/train`}
-                      className="text-xs font-medium underline decoration-current/30 underline-offset-2"
-                    >
-                      Train
-                    </Link>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </section>
     </div>
   );
 }

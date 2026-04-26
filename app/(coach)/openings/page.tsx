@@ -42,87 +42,83 @@ export default async function OpeningsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl p-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-stone-800">
-            Opening repertoires
+    <div className="min-h-full bg-stone-100">
+      <div className="mx-auto w-full max-w-5xl p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-stone-900">
+            Repertoire library
           </h1>
           <p className="mt-1 text-sm text-stone-500">
-            Coach-only repertoire drilling. Homework assignments stay separate.
+            Coach-only opening courses. Homework assignments stay separate.
           </p>
         </div>
-        <Link
-          href="/openings/new"
-          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-        >
-          + New repertoire
-        </Link>
-      </div>
 
-      {list.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-stone-300 bg-white p-12 text-center">
-          <p className="text-stone-500">No opening repertoires yet.</p>
+        <div className="mb-5 rounded-lg bg-white p-4 shadow-sm">
           <Link
             href="/openings/new"
-            className="mt-3 inline-block text-sm text-amber-600 hover:text-amber-800"
+            className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-5 py-3 text-base font-semibold text-stone-900 transition-colors hover:border-amber-400 hover:bg-amber-50"
           >
-            Create your first repertoire
+            <span className="text-2xl leading-none">+</span>
+            Add to Repertoire
           </Link>
         </div>
-      ) : (
-        <div className="divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-          {list.map((repertoire) => {
-            const repertoirePositions = positions.filter(
-              (position) => position.repertoire_id === repertoire.id,
-            );
-            const mastered = progressRows.filter(
-              (progress) =>
-                progress.repertoire_id === repertoire.id &&
-                progress.mastery_level === 'mastered',
-            ).length;
-            const masteryPct = percent(mastered, repertoirePositions.length);
 
-            return (
-              <div
-                key={repertoire.id}
-                className="flex flex-col gap-3 px-4 py-3 hover:bg-stone-50 sm:flex-row sm:items-center"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-stone-800">
-                    {repertoire.name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-stone-500">
-                    {repertoire.side_to_train === 'white' ? 'White' : 'Black'} ·{' '}
-                    {repertoirePositions.length} trainable positions · {masteryPct}%
-                    mastered
-                  </p>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-stone-100 sm:w-32">
-                  <div
-                    className="h-full bg-green-500"
-                    style={{ width: `${masteryPct}%` }}
-                  />
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Link
-                    href={`/openings/${repertoire.id}`}
-                    className="rounded border border-stone-200 px-2.5 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-50 hover:text-stone-800"
-                  >
-                    View
-                  </Link>
-                  <Link
-                    href={`/openings/${repertoire.id}/train`}
-                    className="rounded border border-amber-200 px-2.5 py-1 text-xs text-amber-700 transition-colors hover:bg-amber-50"
-                  >
-                    Train
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+        {list.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-stone-300 bg-white p-12 text-center shadow-sm">
+            <p className="text-stone-500">No opening repertoires yet.</p>
+            <Link
+              href="/openings/new"
+              className="mt-3 inline-block text-sm text-amber-600 hover:text-amber-800"
+            >
+              Create your first repertoire
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {list.map((repertoire, index) => {
+              const repertoirePositions = positions.filter(
+                (position) => position.repertoire_id === repertoire.id,
+              );
+              const mastered = progressRows.filter(
+                (progress) =>
+                  progress.repertoire_id === repertoire.id &&
+                  progress.mastery_level === 'mastered',
+              ).length;
+              const masteryPct = percent(mastered, repertoirePositions.length);
+
+              return (
+                <Link
+                  key={repertoire.id}
+                  href={`/openings/${repertoire.id}`}
+                  className="group flex min-h-60 flex-col rounded-lg border border-transparent bg-white p-6 shadow-sm transition hover:border-amber-200 hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-stone-900">
+                      {index + 1}) {repertoire.name}
+                    </h2>
+                    <span className="rounded-full border border-stone-200 px-2 py-0.5 text-xs capitalize text-stone-500">
+                      {repertoire.side_to_train}
+                    </span>
+                  </div>
+
+                  <div className="mt-auto">
+                    <p className="text-sm text-stone-500">{masteryPct}% mastered</p>
+                    <p className="mt-5 text-base text-stone-600">
+                      {mastered}/{repertoirePositions.length} variations
+                    </p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-200">
+                      <div
+                        className="h-full bg-green-500 transition-all"
+                        style={{ width: `${masteryPct}%` }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

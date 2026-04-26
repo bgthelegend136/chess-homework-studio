@@ -30,6 +30,7 @@ export function PgnPanel({
       return ply?.index ?? -1;
     }).filter((i) => i !== -1),
   );
+  const questionFens = new Set(state.questions.map((q) => q.fen));
 
   function handleParse() {
     setLocalError(null);
@@ -112,9 +113,13 @@ export function PgnPanel({
       <div className="overflow-y-auto flex-1 pr-1">
         <MoveList
           plies={state.plies}
+          moveTree={state.moveTree}
           selectedIndex={state.selectedPlyIndex}
+          selectedNodeId={state.selectedNodeId}
           questionPlyIndices={questionPlyIndices}
+          questionFens={questionFens}
           onSelect={(index) => dispatch({ type: 'SELECT_PLY', index })}
+          onSelectNode={(id) => dispatch({ type: 'SELECT_NODE', id })}
           readOnly={readOnly}
         />
       </div>

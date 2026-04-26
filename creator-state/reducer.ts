@@ -1,4 +1,4 @@
-import type { Ply } from '@/lib/chess/parsePgn';
+import type { PgnMoveNode, Ply } from '@/lib/chess/parsePgn';
 import type { CalculationDepth } from '@/lib/types';
 import { sideToMoveFromFen } from '@/lib/chess/parsePgn';
 
@@ -22,8 +22,11 @@ export interface CreatorState {
   pgn: string;
   parseError: string | null;
   plies: Ply[];
+  moveTree: PgnMoveNode[];
+  moveNodes: PgnMoveNode[];
   startFen: string;
   selectedPlyIndex: number; // -1 = start position
+  selectedNodeId: string | null;
   questions: DraftQuestion[];
   editingIndex: number | null;
   readOnly: boolean;
@@ -31,9 +34,17 @@ export interface CreatorState {
 }
 
 export type CreatorAction =
-  | { type: 'PGN_PARSED'; pgn: string; plies: Ply[]; startFen: string }
+  | {
+      type: 'PGN_PARSED';
+      pgn: string;
+      plies: Ply[];
+      startFen: string;
+      moveTree?: PgnMoveNode[];
+      moveNodes?: PgnMoveNode[];
+    }
   | { type: 'PGN_PARSE_ERROR'; pgn: string; error: string }
   | { type: 'SELECT_PLY'; index: number }
+  | { type: 'SELECT_NODE'; id: string }
   | { type: 'ADD_QUESTION_FROM_SELECTED' }
   | { type: 'EDIT_QUESTION'; index: number }
   | {
@@ -76,8 +87,14 @@ export function creatorReducer(
         pgn: action.pgn,
         parseError: null,
         plies: action.plies,
+        moveTree: action.moveTree ?? [],
+        moveNodes: action.moveNodes ?? [],
         startFen: action.startFen,
         selectedPlyIndex: action.plies.length - 1,
+        selectedNodeId:
+          action.moveNodes && action.moveNodes.length > 0
+            ? action.moveNodes[action.moveNodes.length - 1].id
+            : null,
       };
 
     case 'PGN_PARSE_ERROR':
@@ -86,21 +103,47 @@ export function creatorReducer(
         pgn: action.pgn,
         parseError: action.error,
         plies: [],
+        moveTree: [],
+        moveNodes: [],
+        selectedNodeId: null,
       };
 
     case 'SELECT_PLY':
-      return { ...state, selectedPlyIndex: action.index };
+      return {
+        ...state,
+        selectedPlyIndex: action.index,
+        selectedNodeId:
+          action.index === -1
+            ? null
+            : state.moveNodes.find((node) => node.isMainline && node.index === action.index)
+                ?.id ?? null,
+      };
+
+    case 'SELECT_NODE': {
+      const node = state.moveNodes.find((moveNode) => moveNode.id === action.id);
+      if (!node) return state;
+      return {
+        ...state,
+        selectedNodeId: node.id,
+        selectedPlyIndex: node.isMainline ? node.index : -1,
+      };
+    }
 
     case 'ADD_QUESTION_FROM_SELECTED': {
+      const selectedNode = state.selectedNodeId
+        ? state.moveNodes.find((node) => node.id === state.selectedNodeId)
+        : null;
       const fen =
-        state.selectedPlyIndex === -1
+        selectedNode?.fen ??
+        (state.selectedPlyIndex === -1
           ? state.startFen
-          : state.plies[state.selectedPlyIndex]?.fen;
+          : state.plies[state.selectedPlyIndex]?.fen);
       if (!fen) return state;
       const moveNumber =
-        state.selectedPlyIndex === -1
+        selectedNode?.moveNumber ??
+        (state.selectedPlyIndex === -1
           ? 1
-          : state.plies[state.selectedPlyIndex].moveNumber;
+          : state.plies[state.selectedPlyIndex].moveNumber);
       // Avoid duplicate question for same position
       if (state.questions.some((q) => q.fen === fen)) {
         const idx = state.questions.findIndex((q) => q.fen === fen);
@@ -186,6 +229,9 @@ export function initialCreatorState(readOnly: boolean): CreatorState {
     plies: [],
     startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     selectedPlyIndex: -1,
+    selectedNodeId: null,
+    moveTree: [],
+    moveNodes: [],
     questions: [],
     editingIndex: null,
     readOnly,

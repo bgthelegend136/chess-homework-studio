@@ -19,14 +19,23 @@ export function BoardPanel({
   canAddQuestion = !state.readOnly,
 }: BoardPanelProps) {
   const { plies, selectedPlyIndex, startFen, readOnly } = state;
+  const selectedNode = state.selectedNodeId
+    ? state.moveNodes.find((node) => node.id === state.selectedNodeId)
+    : null;
+  const navigationNodes = state.moveNodes.length > 0 ? state.moveNodes : null;
+  const navigationIndex =
+    selectedNode && navigationNodes
+      ? navigationNodes.findIndex((node) => node.id === selectedNode.id)
+      : selectedPlyIndex;
 
   const currentFen =
-    selectedPlyIndex === -1
+    selectedNode?.fen ??
+    (selectedPlyIndex === -1
       ? startFen
-      : plies[selectedPlyIndex]?.fen ?? startFen;
+      : plies[selectedPlyIndex]?.fen ?? startFen);
 
   const currentPly =
-    selectedPlyIndex >= 0 ? plies[selectedPlyIndex] : null;
+    selectedNode ?? (selectedPlyIndex >= 0 ? plies[selectedPlyIndex] : null);
 
   const sideLabel =
     currentPly
@@ -40,6 +49,17 @@ export function BoardPanel({
     : 'Start position';
 
   function go(index: number) {
+    if (navigationNodes) {
+      if (index < -1) {
+        dispatch({ type: 'SELECT_PLY', index: -1 });
+        return;
+      }
+      if (index > navigationNodes.length - 1) index = navigationNodes.length - 1;
+      if (index === -1) dispatch({ type: 'SELECT_PLY', index: -1 });
+      else dispatch({ type: 'SELECT_NODE', id: navigationNodes[index].id });
+      return;
+    }
+
     if (index < -1) index = -1;
     if (index > plies.length - 1) index = plies.length - 1;
     dispatch({ type: 'SELECT_PLY', index });
@@ -52,10 +72,10 @@ export function BoardPanel({
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        go(selectedPlyIndex - 1);
+        go(navigationIndex - 1);
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        go(selectedPlyIndex + 1);
+        go(navigationIndex + 1);
       } else if (e.key === 'Home') {
         e.preventDefault();
         go(-1);
@@ -67,7 +87,7 @@ export function BoardPanel({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlyIndex, plies.length]);
+  }, [navigationIndex, plies.length, state.moveNodes]);
 
   const selectedQuestionForThisPosition =
     state.questions.find((q) => q.fen === currentFen);
@@ -130,7 +150,7 @@ export function BoardPanel({
         <button
           type="button"
           onClick={() => go(-1)}
-          disabled={selectedPlyIndex === -1}
+          disabled={navigationIndex === -1}
           className={navBtn}
           title="Start (Home)"
           aria-label="Jump to start"
@@ -139,8 +159,8 @@ export function BoardPanel({
         </button>
         <button
           type="button"
-          onClick={() => go(selectedPlyIndex - 1)}
-          disabled={selectedPlyIndex <= -1}
+          onClick={() => go(navigationIndex - 1)}
+          disabled={navigationIndex <= -1}
           className={navBtn}
           title="Previous move (←)"
           aria-label="Previous move"
@@ -148,14 +168,14 @@ export function BoardPanel({
           ◀
         </button>
         <span className="px-3 py-1 text-xs text-stone-500 min-w-28 text-center">
-          {selectedPlyIndex === -1
+          {!currentPly
             ? 'start'
-            : `move ${currentPly?.moveNumber ?? ''} (${selectedPlyIndex + 1}/${plies.length})`}
+            : `move ${currentPly?.moveNumber ?? ''} (${navigationIndex + 1}/${navigationNodes?.length ?? plies.length})`}
         </span>
         <button
           type="button"
-          onClick={() => go(selectedPlyIndex + 1)}
-          disabled={selectedPlyIndex >= plies.length - 1}
+          onClick={() => go(navigationIndex + 1)}
+          disabled={navigationIndex >= (navigationNodes?.length ?? plies.length) - 1}
           className={navBtn}
           title="Next move (→)"
           aria-label="Next move"
@@ -164,8 +184,8 @@ export function BoardPanel({
         </button>
         <button
           type="button"
-          onClick={() => go(plies.length - 1)}
-          disabled={selectedPlyIndex >= plies.length - 1}
+          onClick={() => go((navigationNodes?.length ?? plies.length) - 1)}
+          disabled={navigationIndex >= (navigationNodes?.length ?? plies.length) - 1}
           className={navBtn}
           title="End (End)"
           aria-label="Jump to end"

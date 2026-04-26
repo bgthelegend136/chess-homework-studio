@@ -7,10 +7,6 @@ const { Chess } = require('chess.js');
 const fs = require('fs');
 const path = require('path');
 
-// ── NAG → annotation map ─────────────────────────────────────────────────────
-const NAG_ANNOTATION = { 1: '!', 3: '!!' };
-
-// ── Strip Lichess/CB visual markup from comment text ──────────────────────────
 function cleanComment(raw) {
   if (!raw) return null;
   const cleaned = raw
@@ -23,104 +19,129 @@ function cleanComment(raw) {
   return cleaned || null;
 }
 
-// ── Walk the PGN move tree, emitting trainable positions ─────────────────────
-function walkMoves(moves, chess, sideToTrain, parentId, isMainline, linePath, report) {
-  const trainColor = sideToTrain === 'white' ? 'w' : 'b';
-  const positions = [];
-  let lastTrainableId = parentId;
-  let lastOpponentSan = null;
-  let lastOpponentUci = null;
+function annotationFromNag(nag) {
+  const values = Array.isArray(nag) ? nag : nag ? [nag] : [];
+  let annotation = null;
+  for (const value of values) {
+    const raw = typeof value === 'object' && value !== null ? value.value : value;
+    const normalized = typeof raw === 'string' ? raw.replace(/^\$/, '') : String(raw);
+    if (normalized === '3') annotation = '!!';
+    if (normalized === '1' && annotation !== '!!') annotation = '!';
+  }
+  return annotation;
+}
 
-  for (const move of moves) {
-    const san = move.notation.notation;
+function uciFromMove(move) {
+  return `${move.from}${move.to}${move.promotion || ''}`;
+}
+
+function pathSegment(index) {
+  return String(index).padStart(4, '0');
+}
+
+function walkMoves(moves, chess, sideToTrain, context, state) {
+  const trainColor = sideToTrain === 'white' ? 'w' : 'b';
+  let parentTrainableId = context.parentTrainableId;
+  let lastOpponentSan = context.lastOpponentSan;
+  let lastOpponentUci = context.lastOpponentUci;
+  let lastOpponentComment = context.lastOpponentComment;
+  let plyOffset = context.plyOffset;
+
+  for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+    const move = moves[moveIndex];
+    const san = move.notation && move.notation.notation;
+    if (!san) {
+      state.report.warnings.push(`Skipped a move without SAN at ${context.linePath}.${moveIndex}.`);
+      state.report.skipped_branches++;
+      continue;
+    }
+
     const fenBefore = chess.fen();
     const turn = chess.turn();
+    const parentBeforeMove = parentTrainableId;
+    const opponentSanBeforeMove = lastOpponentSan;
+    const opponentUciBeforeMove = lastOpponentUci;
+    const opponentCommentBeforeMove = lastOpponentComment;
+    const plyBeforeMove = plyOffset;
+    const movePath = `${context.linePath}.${pathSegment(moveIndex)}`;
 
-    // Validate and apply the move
     let played;
     try {
       played = chess.move(san);
     } catch {
-      report.warnings.push(`Illegal SAN "${san}" at path ${linePath} — branch skipped`);
-      report.skipped_branches++;
-      return positions; // abandon this subtree
+      state.report.warnings.push(`Illegal SAN "${san}" at ${movePath}; skipped the rest of that branch.`);
+      state.report.skipped_branches++;
+      break;
     }
 
-    const uci = `${played.from}${played.to}${played.promotion ?? ''}`;
-
-    // Extract annotation from NAG
-    const nagArr = move.nag ? (Array.isArray(move.nag) ? move.nag : [move.nag]) : [];
-    const annotation = nagArr.reduce((acc, n) => {
-      const num = typeof n === 'object' ? n.value ?? n : n;
-      return NAG_ANNOTATION[num] ?? acc;
-    }, null);
-
-    // Extract and clean comment
-    const rawComment = move.commentDiag?.comment ?? null;
-    const hasMarkup = (move.commentDiag?.colorFields?.length > 0) ||
-                      (move.commentDiag?.colorArrows?.length > 0);
-    const comment = cleanComment(rawComment);
-    if (hasMarkup) report.comments_stripped_markup++;
-    if (comment) report.comments_preserved++;
+    const comment = cleanComment(
+      (move.commentDiag && move.commentDiag.comment) || move.commentAfter || null,
+    );
+    if (comment) state.report.comments_preserved++;
 
     if (turn === trainColor) {
-      const id = `pos_${positions.length + report.trainable_positions}`;
-      const pos = {
-        id,
+      const positionComment = [opponentCommentBeforeMove, comment]
+        .filter(Boolean)
+        .join('\n\n') || null;
+      const position = {
+        id: `pos_${state.positions.length}`,
         fen: fenBefore,
         expected_move_san: played.san,
-        expected_move_uci: uci,
-        parent_position_id: lastTrainableId,
-        line_path: linePath,
-        ply_index: (move.moveNumber - 1) * 2 + (turn === 'w' ? 0 : 1),
-        opponent_move_san: lastOpponentSan,
-        opponent_move_uci: lastOpponentUci,
-        is_mainline: isMainline,
-        annotation,
-        comment,
-        priority_weight: 10 + (annotation === '!!' ? 8 : annotation === '!' ? 4 : 0) + (isMainline ? 6 : 0),
+        expected_move_uci: uciFromMove(played),
+        parent_position_id: parentBeforeMove,
+        line_path: movePath,
+        ply_index:
+          typeof move.moveNumber === 'number'
+            ? (move.moveNumber - 1) * 2 + (turn === 'w' ? 0 : 1)
+            : plyBeforeMove,
+        opponent_move_san: opponentSanBeforeMove,
+        opponent_move_uci: opponentUciBeforeMove,
+        is_mainline: context.isMainline,
+        annotation: annotationFromNag(move.nag),
+        comment: positionComment,
       };
-      positions.push(pos);
-      lastTrainableId = id;
-      report.trainable_positions++;
-      if (isMainline) report.mainline_positions++;
-      else report.variation_positions++;
+      state.positions.push(position);
+      state.report.trainable_positions_created++;
+      if (context.isMainline) state.report.mainline_positions++;
+      else state.report.variation_positions++;
+      parentTrainableId = position.id;
+    } else {
+      lastOpponentSan = played.san;
+      lastOpponentUci = uciFromMove(played);
+      lastOpponentComment = comment;
     }
 
-    lastOpponentSan = turn !== trainColor ? played.san : lastOpponentSan;
-    lastOpponentUci = turn !== trainColor ? uci : lastOpponentUci;
-
-    // Recurse into variations (each uses a fresh Chess clone at the state BEFORE this move)
-    for (let vi = 0; vi < (move.variations ?? []).length; vi++) {
-      report.branches_detected++;
-      const varChess = new Chess(fenBefore);
-      const varPath = `${linePath}.var${vi}`;
-      const subPositions = walkMoves(
-        move.variations[vi],
-        varChess,
+    for (let variationIndex = 0; variationIndex < (move.variations || []).length; variationIndex++) {
+      state.report.branches_detected++;
+      walkMoves(
+        move.variations[variationIndex],
+        new Chess(fenBefore),
         sideToTrain,
-        lastTrainableId,
-        false, // variations are never mainline
-        varPath,
-        report,
+        {
+          parentTrainableId: parentBeforeMove,
+          lastOpponentSan: opponentSanBeforeMove,
+          lastOpponentUci: opponentUciBeforeMove,
+          lastOpponentComment: opponentCommentBeforeMove,
+          isMainline: false,
+          linePath: `${movePath}.var${pathSegment(variationIndex)}`,
+          plyOffset: plyBeforeMove,
+        },
+        state,
       );
-      positions.push(...subPositions);
     }
-  }
 
-  return positions;
+    plyOffset++;
+  }
 }
 
-// ── Probe one fixture ─────────────────────────────────────────────────────────
 function probeFixture(fixturePath, sideToTrain) {
   const label = path.basename(fixturePath);
-  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`\n${'='.repeat(60)}`);
   console.log(`Fixture : ${label}`);
   console.log(`Side    : ${sideToTrain}`);
-  console.log('═'.repeat(60));
+  console.log('='.repeat(60));
 
   const pgn = fs.readFileSync(fixturePath, 'utf8');
-
   let game;
   try {
     game = parseGame(pgn, { startRule: 'game' });
@@ -129,58 +150,62 @@ function probeFixture(fixturePath, sideToTrain) {
     return;
   }
 
-  const report = {
-    trainable_positions: 0,
-    mainline_positions: 0,
-    variation_positions: 0,
-    branches_detected: 0,
-    comments_preserved: 0,
-    comments_stripped_markup: 0,
-    warnings: [],
-    skipped_branches: 0,
+  const state = {
+    positions: [],
+    report: {
+      trainable_positions_created: 0,
+      mainline_positions: 0,
+      variation_positions: 0,
+      branches_detected: 0,
+      comments_preserved: 0,
+      warnings: [],
+      skipped_branches: 0,
+      parser_mode_used: 'variation_tree',
+    },
   };
 
-  const chess = new Chess();
-  const positions = walkMoves(game.moves, chess, sideToTrain, null, true, 'main', report);
+  walkMoves(
+    game.moves,
+    new Chess(),
+    sideToTrain,
+    {
+      parentTrainableId: null,
+      lastOpponentSan: null,
+      lastOpponentUci: null,
+      lastOpponentComment: null,
+      isMainline: true,
+      linePath: 'main',
+      plyOffset: 0,
+    },
+    state,
+  );
 
-  // Deduplicate on (fen, expected_move_san)
-  const seen = new Map();
-  const deduped = [];
-  for (const pos of positions) {
-    const key = `${pos.fen}|${pos.expected_move_san}`;
-    if (!seen.has(key)) {
-      seen.set(key, true);
-      deduped.push(pos);
-    }
-  }
-  const dups = positions.length - deduped.length;
-
-  console.log(`\nImport Report`);
-  console.log(`  Trainable positions : ${report.trainable_positions}${dups > 0 ? ` (${dups} duplicates removed → ${deduped.length} stored)` : ''}`);
-  console.log(`  Mainline            : ${report.mainline_positions}`);
-  console.log(`  Variation branches  : ${report.variation_positions}`);
-  console.log(`  Branches detected   : ${report.branches_detected}`);
-  console.log(`  Comments preserved  : ${report.comments_preserved}`);
-  console.log(`  Markup strips       : ${report.comments_stripped_markup}`);
-  if (report.skipped_branches > 0) {
-    console.log(`  ⚠ Skipped branches : ${report.skipped_branches}`);
-  }
-  if (report.warnings.length > 0) {
-    console.log(`\nWarnings:`);
-    report.warnings.forEach(w => console.log(`  ⚠ ${w}`));
+  console.log('\nImport Report');
+  console.log(`  Trainable positions : ${state.report.trainable_positions_created}`);
+  console.log(`  Mainline            : ${state.report.mainline_positions}`);
+  console.log(`  Variation positions : ${state.report.variation_positions}`);
+  console.log(`  Branches detected   : ${state.report.branches_detected}`);
+  console.log(`  Comments preserved  : ${state.report.comments_preserved}`);
+  console.log(`  Skipped branches    : ${state.report.skipped_branches}`);
+  if (state.report.warnings.length > 0) {
+    console.log('\nWarnings:');
+    state.report.warnings.forEach((warning) => console.log(`  - ${warning}`));
   }
 
-  console.log(`\nFirst 10 trainable positions:`);
-  deduped.slice(0, 10).forEach((pos, i) => {
-    const mainTag = pos.is_mainline ? '[main]' : '[var] ';
+  console.log('\nFirst 10 trainable positions:');
+  state.positions.slice(0, 10).forEach((pos, index) => {
+    const mainTag = pos.is_mainline ? '[main]' : '[branch]';
     const annot = pos.annotation ? ` ${pos.annotation}` : '';
-    const opp = pos.opponent_move_san ? `after ${pos.opponent_move_san} → ` : 'opening → ';
-    const comment = pos.comment ? ` | "${pos.comment.slice(0, 60)}${pos.comment.length > 60 ? '…' : ''}"` : '';
-    console.log(`  ${String(i + 1).padStart(2)}. ${mainTag} ${opp}${pos.expected_move_san}${annot}  (${pos.line_path})${comment}`);
+    const opp = pos.opponent_move_san ? `after ${pos.opponent_move_san} -> ` : 'opening -> ';
+    const comment = pos.comment
+      ? ` | "${pos.comment.slice(0, 60)}${pos.comment.length > 60 ? '...' : ''}"`
+      : '';
+    console.log(
+      `  ${String(index + 1).padStart(2)}. ${mainTag} ${opp}${pos.expected_move_san}${annot} (${pos.line_path})${comment}`,
+    );
   });
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
 const side = process.argv[2] || 'white';
 const fixtures = process.argv[3]
   ? [process.argv[3]]
@@ -189,6 +214,6 @@ const fixtures = process.argv[3]
       'test-fixtures/openings/chessbase-complex.pgn',
     ];
 
-for (const f of fixtures) {
-  probeFixture(f, side);
+for (const fixture of fixtures) {
+  probeFixture(fixture, side);
 }

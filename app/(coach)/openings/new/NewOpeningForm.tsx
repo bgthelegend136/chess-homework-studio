@@ -71,7 +71,7 @@ export function NewOpeningForm() {
       <Textarea
         id="pgn"
         label="Repertoire PGN *"
-        hint="Paste any PGN — variations and ? annotations are stripped automatically, only the mainline is trained."
+        hint="Paste a repertoire PGN. Variations are preserved as branches; visual arrows/squares are stripped from comments."
         value={pgn}
         onChange={(e) => setPgn(e.target.value)}
         rows={12}

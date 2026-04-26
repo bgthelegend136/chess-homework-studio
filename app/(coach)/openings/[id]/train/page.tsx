@@ -11,9 +11,10 @@ import { OpeningTrainer } from './OpeningTrainer';
 
 interface Props {
   params: { id: string };
+  searchParams: { line?: string };
 }
 
-export default async function OpeningTrainPage({ params }: Props) {
+export default async function OpeningTrainPage({ params, searchParams }: Props) {
   const coach = await requireCoach();
   const supabase = createSupabaseServerClient();
 
@@ -30,7 +31,7 @@ export default async function OpeningTrainPage({ params }: Props) {
     .from('opening_positions')
     .select('*')
     .eq('repertoire_id', params.id)
-    .order('ply_index');
+    .order('line_path');
 
   const positions = (positionRows ?? []) as OpeningPosition[];
 
@@ -76,6 +77,7 @@ export default async function OpeningTrainPage({ params }: Props) {
           ...position,
           progress: progressByPosition.get(position.id) ?? null,
         }))}
+        lineLeafId={searchParams.line}
       />
     </div>
   );

@@ -4,6 +4,100 @@ Living status doc for the chess homework self-review app. Update this whenever a
 
 ---
 
+## Current session status - 2026-04-26
+
+### Completed in this session
+
+- **Homework assignment PGN parser is now variation-aware for editor navigation.**
+  - `lib/chess/parsePgn.ts` still preserves the existing `ParseResult.plies` mainline output for backward compatibility.
+  - It now also returns optional `moveTree` and `moveNodes` data for the assignment editor.
+  - The original pasted PGN text is still saved unchanged.
+  - `@mliebelt/pgn-parser` is used for full PGN structure when possible.
+  - Mainline, side variations, nested variations, comments, NAGs, and Lichess/ChessBase study syntax are tolerated.
+  - Unsupported custom starting positions (`[SetUp "1"]` / `[FEN "..."]`) still fail clearly because homework assignments assume the standard start position.
+  - Multiple-game pastes still fail clearly.
+- **Assignment editor move list now shows PGN variations.**
+  - `components/chess/MoveList.tsx` renders a compact indented variation tree.
+  - Mainline and variation moves are clickable.
+  - Clicking a variation move updates the board to that position.
+  - Questions can be added from variation positions using the existing FEN-based question model.
+  - Existing saved questions continue to load by FEN.
+- **`Q` shortcut regression fixed.**
+  - After the variation move list landed, clicking a move left focus on a `<button>`, and the global `Q` shortcut ignored buttons.
+  - `components/creator/CreatorShell.tsx` now allows `Q` while focus is on move buttons, while still ignoring inputs, textareas, selects, and contenteditable fields.
+  - `components/creator/BoardPanel.tsx` also had a previous-arrow fix to use the variation-aware navigation index.
+- **Student recurring weak areas were checked.**
+  - The card on the student detail page counts question tags only when the student has a checked incorrect answer (`answers.is_correct === false`).
+  - For the currently referenced token/student (`bill`), the DB had 1 checked answer and it was correct, so the empty message is expected.
+- **Opening trainer variation-aware work is in the worktree.**
+  - `lib/openings/parseRepertoirePgn.ts` was reworked to preserve PGN variations and comments for the coach-side `/openings` module.
+  - `supabase/migrations/0009_opening_variation_tree.sql` was added.
+  - Opening trainer UX was adjusted so correct moves auto-advance and wrong moves require "Show answer".
+  - `scripts/probe-pgn.js` and fixtures under `test-fixtures/openings/` were used to verify complex Lichess/ChessBase PGNs.
+
+### Commands run after the latest fixes
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm run build` - passed.
+- Browser smoke on clean `localhost:3001`:
+  - variation move selection worked,
+  - pressing `Q` after selecting a variation move opened the question editor,
+  - student token page loaded with assignment content and 64 board squares.
+
+### Current blocker / local dev warning
+
+`localhost:3000` is currently serving from a stale/corrupted Next dev cache. The visible error is:
+
+```text
+Cannot find module './682.js'
+Require stack:
+- .next/server/webpack-runtime.js
+- .next/server/app/page.js
+```
+
+This is not believed to be an application-code failure. It happens when `npm run build` or hot reload rewrites `.next` while an old dev server is still running. The fix is:
+
+1. Stop the current Node process listening on port `3000`.
+2. Delete `.next`.
+3. Restart `npm run dev`.
+4. Retest `http://localhost:3000/a/wvCo1eCPrwijju0bGwksQLadBD3uvEzb`.
+
+Deleting `.next` is a local deletion action, so the agent asked for explicit approval before doing it.
+
+### Files changed in the current worktree
+
+- `lib/chess/parsePgn.ts`
+- `creator-state/reducer.ts`
+- `components/chess/MoveList.tsx`
+- `components/creator/PgnPanel.tsx`
+- `components/creator/BoardPanel.tsx`
+- `components/creator/CreatorShell.tsx`
+- `lib/openings/parseRepertoirePgn.ts`
+- `app/(coach)/openings/actions.ts`
+- `app/(coach)/openings/new/NewOpeningForm.tsx`
+- `app/(coach)/openings/[id]/page.tsx`
+- `app/(coach)/openings/[id]/LineCoverageExplorer.tsx`
+- `app/(coach)/openings/[id]/train/page.tsx`
+- `app/(coach)/openings/[id]/train/OpeningTrainer.tsx`
+- `lib/types.ts`
+- `scripts/probe-pgn.js`
+- `supabase/migrations/0009_opening_variation_tree.sql`
+- `test-fixtures/openings/lichess-study-complex.pgn`
+- `test-fixtures/openings/chessbase-complex.pgn`
+
+### Exact next recommended task
+
+Clean and restart `localhost:3000` after approval, then retest:
+
+- student link `/a/wvCo1eCPrwijju0bGwksQLadBD3uvEzb`,
+- assignment editor PGN variation tree,
+- `Q` shortcut after selecting a variation move,
+- simple normal PGN parse,
+- malformed PGN failure.
+
+---
+
 ## What the app is
 
 A web app coaches use to assign chess homework that students self-review. The coach pastes a PGN, picks positions from the game, and writes questions with accepted moves, an explanation, and tags. The student opens a shareable token link, plays a candidate move, writes their reasoning, clicks **Check answer**, and immediately sees Correct/Incorrect plus the coach's explanation. After the student completes self-review, the coach inspects the results in **Answer Analysis** and assigns per-question evaluations, optional feedback, and an overall grade.
@@ -82,7 +176,7 @@ Out of scope for now: live engine eval, multi-coach orgs, student-to-student fea
 
 ## Migrations
 
-Apply in order in the Supabase SQL editor. All eight are required.
+Apply in order in the Supabase SQL editor. All nine are required.
 
 | File | Adds |
 |---|---|
@@ -94,6 +188,7 @@ Apply in order in the Supabase SQL editor. All eight are required.
 | `supabase/migrations/0006_hint_try_again.sql` | `questions.hint`, `answers.hint_used`, `answers.attempt_count`. |
 | `supabase/migrations/0007_notifications.sql` | `notifications` table + RLS for in-app assignment completion notices. |
 | `supabase/migrations/0008_opening_repertoire_trainer.sql` | `opening_repertoires`, `opening_positions`, `opening_attempts`, `opening_position_progress` + RLS. |
+| `supabase/migrations/0009_opening_variation_tree.sql` | `opening_repertoires.import_report jsonb`, `opening_positions.opponent_move_uci`, `opening_positions.comment`, drops `(repertoire_id, fen)` unique index, adds parent/fen/line_path lookup indexes. **Required for the variation-aware trainer rework.** |
 
 All migrations are additive and idempotent (`if not exists` / `do $$ ... $$` guards). Safe to re-run.
 

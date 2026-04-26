@@ -89,6 +89,7 @@ export interface OpeningRepertoire {
   name: string;
   side_to_train: OpeningSide;
   pgn: string;
+  import_report: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -103,8 +104,10 @@ export interface OpeningPosition {
   line_path: string;
   ply_index: number;
   opponent_move_san: string | null;
+  opponent_move_uci: string | null;
   is_mainline: boolean;
   annotation: OpeningAnnotation | null;
+  comment: string | null;
   priority_weight: number;
   created_at: string;
 }

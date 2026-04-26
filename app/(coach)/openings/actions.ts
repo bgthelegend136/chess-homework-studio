@@ -22,13 +22,12 @@ const RecordAttemptSchema = z.object({
 function masteryLevel(
   wasCorrect: boolean,
   correctCount: number,
-  wrongCount: number,
   currentStreak: number,
 ): OpeningMasteryLevel {
-  if (wasCorrect && correctCount >= 3 && currentStreak >= 3 && wrongCount <= correctCount) {
+  if (!wasCorrect) return 'weak';
+  if (correctCount >= 4 && currentStreak >= 3) {
     return 'mastered';
   }
-  if (!wasCorrect || wrongCount > correctCount) return 'weak';
   return 'learning';
 }
 
@@ -37,10 +36,10 @@ function priorityScore(
   level: OpeningMasteryLevel,
   wasCorrect: boolean,
 ): number {
-  if (level === 'weak') return baseWeight + 45;
+  if (level === 'weak') return baseWeight + 70;
   if (level === 'new') return baseWeight + 30;
-  if (level === 'mastered') return Math.max(1, baseWeight - 7);
-  return baseWeight + (wasCorrect ? 5 : 25);
+  if (level === 'mastered') return Math.max(1, baseWeight - 12);
+  return baseWeight + (wasCorrect ? 2 : 35);
 }
 
 export async function createOpeningRepertoire(
@@ -48,7 +47,7 @@ export async function createOpeningRepertoire(
 ): Promise<{ id: string }> {
   const coach = await requireCoach();
   const data = CreateRepertoireSchema.parse(input);
-  const positions = parseRepertoirePgn(data.pgn, data.side_to_train as OpeningSide);
+  const parsed = parseRepertoirePgn(data.pgn, data.side_to_train as OpeningSide);
   const supabase = createSupabaseServerClient();
 
   const { data: repertoire, error: repertoireError } = await supabase
@@ -58,6 +57,7 @@ export async function createOpeningRepertoire(
       name: data.name,
       side_to_train: data.side_to_train,
       pgn: data.pgn,
+      import_report: parsed.importReport,
     })
     .select('id')
     .single();
@@ -66,7 +66,7 @@ export async function createOpeningRepertoire(
     throw new Error(repertoireError?.message ?? 'Could not create repertoire');
   }
 
-  const positionRows = positions.map((position) => ({
+  const positionRows = parsed.positions.map((position) => ({
     id: position.id,
     repertoire_id: repertoire.id,
     fen: position.fen,
@@ -76,8 +76,10 @@ export async function createOpeningRepertoire(
     line_path: position.line_path,
     ply_index: position.ply_index,
     opponent_move_san: position.opponent_move_san,
+    opponent_move_uci: position.opponent_move_uci,
     is_mainline: position.is_mainline,
     annotation: position.annotation,
+    comment: position.comment,
     priority_weight: position.priority_weight,
   }));
 
@@ -162,7 +164,7 @@ export async function recordOpeningAttempt(
   const correctCount = (existingProgress?.correct_count ?? 0) + (wasCorrect ? 1 : 0);
   const wrongCount = (existingProgress?.wrong_count ?? 0) + (wasCorrect ? 0 : 1);
   const currentStreak = wasCorrect ? (existingProgress?.current_streak ?? 0) + 1 : 0;
-  const level = masteryLevel(wasCorrect, correctCount, wrongCount, currentStreak);
+  const level = masteryLevel(wasCorrect, correctCount, currentStreak);
   const score = priorityScore(position.priority_weight, level, wasCorrect);
   const now = new Date().toISOString();
 

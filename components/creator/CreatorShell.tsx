@@ -98,7 +98,6 @@ export function CreatorShell({
         tag !== 'INPUT' &&
         tag !== 'TEXTAREA' &&
         tag !== 'SELECT' &&
-        tag !== 'BUTTON' &&
         activeElement?.getAttribute('contenteditable') !== 'true'
       ) {
         e.preventDefault();
