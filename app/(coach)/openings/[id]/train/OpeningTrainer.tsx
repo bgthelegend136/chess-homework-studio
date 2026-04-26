@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useEffect, useRef, useState, useTransition } from 'react';
 import { Board } from '@/components/chess/Board';
 import { Button } from '@/components/ui/Button';
 import { validateMove } from '@/lib/chess/validateMove';
@@ -79,6 +79,15 @@ export function OpeningTrainer({ repertoire, positions }: OpeningTrainerProps) {
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0 });
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const advanceRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!feedback || feedback.kind !== 'correct') return;
+    const timer = setTimeout(() => {
+      advanceRef.current?.();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [feedback]);
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string, TrainingPosition[]>();
@@ -106,6 +115,7 @@ export function OpeningTrainer({ repertoire, positions }: OpeningTrainerProps) {
 
   function advance(fromPosition: TrainingPosition) {
     const child = childrenByParent.get(fromPosition.id)?.[0];
+    setFeedback(null);
     if (child) {
       setCurrent(child);
       return;
@@ -156,11 +166,14 @@ export function OpeningTrainer({ repertoire, positions }: OpeningTrainerProps) {
               : position,
           ),
         );
-        setFeedback({
-          kind: response.wasCorrect ? 'correct' : 'incorrect',
+        const fb = {
+          kind: response.wasCorrect ? 'correct' as const : 'incorrect' as const,
           attempted: result.san,
           correctMove: response.correctMove,
-        });
+        };
+        const snapshot = current;
+        advanceRef.current = () => advance(snapshot);
+        setFeedback(fb);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Could not record attempt');
       }
@@ -218,28 +231,26 @@ export function OpeningTrainer({ repertoire, positions }: OpeningTrainerProps) {
             }`}
           >
             <p className="font-semibold">
-              {feedback.kind === 'correct' ? 'Correct' : 'Incorrect'}
-            </p>
-            <p className="mt-1 text-sm">
-              Your move: <span className="font-mono">{feedback.attempted}</span>
+              {feedback.kind === 'correct' ? '✓ Correct' : '✗ Incorrect'}
             </p>
             {feedback.kind === 'incorrect' && (
-              <p className="mt-1 text-sm">
-                Correct move: <span className="font-mono">{feedback.correctMove}</span>
-              </p>
+              <>
+                <p className="mt-1 text-sm">
+                  You played: <span className="font-mono">{feedback.attempted}</span>
+                </p>
+                <p className="mt-1 text-sm">
+                  Correct move: <span className="font-mono">{feedback.correctMove}</span>
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3 bg-white"
+                  onClick={() => advanceRef.current?.()}
+                >
+                  Continue
+                </Button>
+              </>
             )}
-            <Button
-              type="button"
-              variant="secondary"
-              className="mt-3 bg-white"
-              onClick={() => {
-                const previous = current;
-                setFeedback(null);
-                advance(previous);
-              }}
-            >
-              Continue
-            </Button>
           </section>
         )}
 

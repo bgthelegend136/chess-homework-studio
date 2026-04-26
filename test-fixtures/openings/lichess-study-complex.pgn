@@ -1,0 +1,14 @@
+[Event "Italian d5: Κεφάλαιο 1"]
+[Date "2025.04.05"]
+[Result "*"]
+[Variant "Standard"]
+[ECO "C54"]
+[Opening "Italian Game: Classical Variation, Giuoco Pianissimo"]
+[StudyName "Italian d5"]
+[ChapterName "Κεφάλαιο 1"]
+[ChapterURL "https://lichess.org/study/5lLkPJIO/RbmZ7duQ"]
+[Annotator "https://lichess.org/@/BillGeorgeOrJustBG"]
+[UTCDate "2025.04.05"]
+[UTCTime "09:00:32"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 5. d3 O-O 6. c3 (6. h3 d5?! (6... a5 7. c3 (7. Bg5)) (6... h6 7. c3 d5 8. exd5 Nxd5 9. Re1 { [%csl Gc8] } 9... Re8 (9... Nb6 10. Bb5 Bd6 (10... f6 { [%csl Gh6,Gf6,Gg6] }) 11. Bxc6 bxc6 12. Nxe5 Re8 13. d4 Bb7 { [%cal Gc6c5] }) 10. d4) 7. exd5 Nxd5 8. Re1 f6?! (8... Be6!) 9. Nc3! Be6 10. d4 Nxd4 11. Nxd4 Bxd4 12. Nxd5 Bxd5 13. Bxd5+ Qxd5 14. c3 $18 { [%cal Gd1d5] }) (6. Re1 Ng4! 7. Re2 (7. Rf1 Kh8? (7... Na5 8. h3 Nxc4 9. dxc4 Nf6 10. Nxe5 Nxe4) 8. h3 f5? 9. hxg4 fxg4 10. Ng5 g3 { [%csl Ge2,Gf2][%cal Gg3f2] } 11. Qh5 gxf2+ 12. Kh1 $18) 7... Kh8! { [%cal Gf7f5] } 8. h3 f5 9. hxg4? fxg4 $19 { [%cal Gg4g3,Gc5g1,Gd8h4,Gh4h1] }) 6... d5 { [%csl Gd5] } 7. exd5 Nxd5 8. Re1 (8. a4 a5 { [%csl Gb5] } (8... a6 { [%csl Gc5] } 9. b4 (9. Re1) 9... Ba7 10. b5 axb5 11. axb5 { [%csl Ga1] } 11... Bxf2+ 12. Rxf2 Rxa1 { [%cal Ga1b1] }) 9. Re1 Nb6 10. Bb5 Bd6 11. Nbd2 Bg4 12. Ne4 Kh8 13. h3 Bh5 14. Ng3 Bg6) 8... Be6 (8... Bg4 9. h3 Bh5 10. g4 Bg6 11. Nxe5 Nxe5 12. Rxe5 Bxf2+? (12... c6 { [%cal Gc5f2,Gg6d3] } 13. d4 Bd6 { [%csl Gf4][%cal Gd6h2] }) 13. Kxf2 Qf6+ 14. Qf3! Qxe5 15. Qxd5 $16) (8... Re8 9. Nbd2 h6 10. Ne4 Bb6 11. Bxh6 { [%csl Ge4][%cal Gc4d5] }) 9. Nxe5 (9. Nbd2 Bd6! (9... h6) 10. Ne4 h6 11. Nxd6 cxd6) 9... Nxe5 10. Rxe5 Bxf2+ 11. Kxf2 Qf6+ *

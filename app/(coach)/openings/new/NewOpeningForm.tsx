@@ -71,7 +71,7 @@ export function NewOpeningForm() {
       <Textarea
         id="pgn"
         label="Repertoire PGN *"
-        hint="MVP supports one mainline PGN. Parenthesized variations are rejected clearly for now."
+        hint="Paste any PGN — variations and ? annotations are stripped automatically, only the mainline is trained."
         value={pgn}
         onChange={(e) => setPgn(e.target.value)}
         rows={12}

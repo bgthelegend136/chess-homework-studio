@@ -13,6 +13,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@mliebelt/pgn-parser": "^1.4.19",
     "@supabase/ssr": "^0.5",
     "@supabase/supabase-js": "^2",
     "chess.js": "^1.3.0",

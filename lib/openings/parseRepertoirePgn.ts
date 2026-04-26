@@ -27,17 +27,23 @@ function stripHeaders(pgn: string): string {
     .join('\n');
 }
 
-function extractMoveTokens(pgn: string): MoveToken[] {
-  if (/[()]/.test(pgn)) {
-    throw new Error(
-      'This MVP supports mainline PGNs only. Remove parenthesized variations and try again.',
-    );
+function stripVariations(text: string): string {
+  let result = '';
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    else if (ch === ')') { if (depth > 0) depth--; }
+    else if (depth === 0) result += ch;
   }
+  return result;
+}
+
+function extractMoveTokens(pgn: string): MoveToken[] {
   if (/^\s*\[FEN\s+/m.test(pgn) || /^\s*\[SetUp\s+"1"\s*\]/m.test(pgn)) {
-    throw new Error('Custom starting FEN PGNs are not supported in this MVP.');
+    throw new Error('Custom starting FEN PGNs are not supported.');
   }
 
-  const movetext = stripHeaders(pgn)
+  const movetext = stripVariations(stripHeaders(pgn))
     .replace(/\{[^}]*\}/g, ' ')
     .replace(/;[^\n\r]*/g, ' ')
     .replace(/\$\d+/g, ' ')
@@ -49,21 +55,16 @@ function extractMoveTokens(pgn: string): MoveToken[] {
 
   return movetext
     .split(' ')
-    .filter((token) => !['1-0', '0-1', '1/2-1/2', '*'].includes(token))
+    .filter((token) => token && !['1-0', '0-1', '1/2-1/2', '*'].includes(token))
     .map((token) => {
       const suffixMatch = token.match(/([!?]{1,2})$/);
       const suffix = suffixMatch?.[1] ?? '';
-      if (suffix.includes('?')) {
-        throw new Error(
-          'Only ! and !! annotations are supported in this MVP. Remove ? annotations and try again.',
-        );
-      }
-      const annotation = suffix === '!' || suffix === '!!' ? suffix : null;
-      return {
-        san: annotation ? token.slice(0, -annotation.length) : token,
-        annotation,
-      };
-    });
+      // Strip ? annotations silently; only keep ! and !!
+      const annotation: OpeningAnnotation | null = (suffix === '!' || suffix === '!!') ? (suffix as OpeningAnnotation) : null;
+      const san = suffix ? token.slice(0, -suffix.length) : token;
+      return { san, annotation };
+    })
+    .filter((token) => Boolean(token.san));
 }
 
 function priorityFor(annotation: OpeningAnnotation | null): number {
@@ -76,6 +77,20 @@ function uciFromMove(move: { from: string; to: string; promotion?: string }): st
   return `${move.from}${move.to}${move.promotion ?? ''}`;
 }
 
+function buildMainlinePgn(pgn: string): string {
+  const headers = pgn
+    .split(/\r?\n/)
+    .filter((line) => line.trim().startsWith('['))
+    .join('\n');
+  const movetext = stripVariations(stripHeaders(pgn))
+    .replace(/\{[^}]*\}/g, ' ')
+    .replace(/;[^\n\r]*/g, ' ')
+    .replace(/\$\d+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (headers ? headers + '\n\n' : '') + movetext;
+}
+
 export function parseRepertoirePgn(
   pgn: string,
   sideToTrain: OpeningSide,
@@ -85,9 +100,11 @@ export function parseRepertoirePgn(
     throw new Error('PGN contains no moves.');
   }
 
+  // Build a mainline-only PGN for chess.js (deeply nested variations crash its parser)
+  const mainlinePgn = buildMainlinePgn(pgn);
   const chess = new Chess();
   try {
-    chess.loadPgn(pgn.trim());
+    chess.loadPgn(mainlinePgn);
   } catch (e) {
     throw new Error(
       `Could not parse PGN: ${e instanceof Error ? e.message : String(e)}`,
