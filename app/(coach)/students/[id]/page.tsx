@@ -4,7 +4,7 @@ import { requireCoach } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Badge } from '@/components/ui/Badge';
 import { STATUS_LABEL, STATUS_VARIANT } from '@/lib/assignments/labels';
-import type { Assignment, Student, StudentGroup } from '@/lib/types';
+import type { Assignment, Evaluation, Student, StudentGroup } from '@/lib/types';
 
 interface Props {
   params: { id: string };
@@ -65,15 +65,28 @@ export default async function StudentDetailPage({ params }: Props) {
 
   type WeakQuestionRow = {
     tags: string[] | null;
-    answers: { is_correct: boolean | null }[] | { is_correct: boolean | null } | null;
+    answers:
+      | { is_correct: boolean | null; evaluation: Evaluation | null }[]
+      | { is_correct: boolean | null; evaluation: Evaluation | null }
+      | null;
   };
 
   const assignmentIds = list.map((a) => a.id);
   let weakAreas: Array<[string, number]> = [];
+  const evaluationCounts: Record<Evaluation, number> = {
+    blunder: 0,
+    mistake: 0,
+    dubious: 0,
+    interesting: 0,
+    correct: 0,
+  };
+  let checkedCorrectCount = 0;
+  let checkedIncorrectCount = 0;
+  let checkedTotal = 0;
   if (assignmentIds.length > 0) {
     const { data: questionRows } = await supabase
       .from('questions')
-      .select('tags, answers(is_correct)')
+      .select('tags, answers(is_correct, evaluation)')
       .in('assignment_id', assignmentIds);
 
     const weakCounts: Record<string, number> = {};
@@ -83,6 +96,23 @@ export default async function StudentDetailPage({ params }: Props) {
         : row.answers
           ? [row.answers]
           : [];
+      for (const answer of answers) {
+        if (answer.is_correct !== null) {
+          checkedTotal += 1;
+          if (answer.is_correct) checkedCorrectCount += 1;
+          else checkedIncorrectCount += 1;
+        }
+        if (
+          answer.evaluation &&
+          (answer.evaluation === 'blunder' ||
+            answer.evaluation === 'mistake' ||
+            answer.evaluation === 'dubious' ||
+            answer.evaluation === 'interesting' ||
+            answer.evaluation === 'correct')
+        ) {
+          evaluationCounts[answer.evaluation] += 1;
+        }
+      }
       if (!answers.some((answer) => answer.is_correct === false)) continue;
       for (const tag of row.tags ?? []) {
         weakCounts[tag] = (weakCounts[tag] ?? 0) + 1;
@@ -90,6 +120,8 @@ export default async function StudentDetailPage({ params }: Props) {
     }
     weakAreas = Object.entries(weakCounts).sort((a, b) => b[1] - a[1]);
   }
+  const evaluatedTotal = Object.values(evaluationCounts).reduce((sum, value) => sum + value, 0);
+  const checkedCorrectPct = checkedTotal > 0 ? Math.round((checkedCorrectCount / checkedTotal) * 100) : 0;
 
   return (
     <div className="mx-auto max-w-3xl w-full p-6">
@@ -164,6 +196,70 @@ export default async function StudentDetailPage({ params }: Props) {
             <div className="text-xs text-stone-500">{label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="mb-6 rounded border border-stone-200 bg-white p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-3">
+          Visual performance snapshot
+        </p>
+        {checkedTotal === 0 && evaluatedTotal === 0 ? (
+          <p className="text-sm text-stone-500">
+            No checked or evaluated answers yet. This section fills in after student checks
+            answers and you review submissions.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-2">
+                Checked answer accuracy
+              </p>
+              <div className="h-3 w-full overflow-hidden rounded-full border border-stone-200 bg-stone-100">
+                <div
+                  className="h-full bg-green-500"
+                  style={{ width: `${checkedCorrectPct}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-stone-600">
+                <span>Correct: {checkedCorrectCount}</span>
+                <span>Incorrect: {checkedIncorrectCount}</span>
+                <span>Total checked: {checkedTotal}</span>
+              </div>
+            </div>
+
+            {evaluatedTotal > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-2">
+                  Coach evaluation distribution
+                </p>
+                <div className="space-y-2">
+                  {([
+                    ['blunder', 'Blunder', 'bg-red-500'],
+                    ['mistake', 'Mistake', 'bg-orange-500'],
+                    ['dubious', 'Dubious', 'bg-yellow-500'],
+                    ['interesting', 'Interesting', 'bg-blue-500'],
+                    ['correct', 'Correct', 'bg-green-500'],
+                  ] as const).map(([key, label, color]) => {
+                    const count = evaluationCounts[key];
+                    const pct = Math.round((count / evaluatedTotal) * 100);
+                    return (
+                      <div key={key}>
+                        <div className="mb-1 flex items-center justify-between text-xs text-stone-600">
+                          <span>{label}</span>
+                          <span>
+                            {count} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full border border-stone-200 bg-stone-100">
+                          <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mb-6 rounded border border-stone-200 bg-white p-4">

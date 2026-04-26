@@ -106,6 +106,7 @@ export function StudentShell({
     assignment.status === 'submitted' || assignment.status === 'reviewed',
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
 
   const currentQuestion = questions[currentIndex];
   const currentDraft = currentQuestion ? drafts[currentQuestion.id] : null;
@@ -119,11 +120,18 @@ export function StudentShell({
     }));
 
     try {
-      await fetch(`/api/public/${token}/answers`, {
+      const res = await fetch(`/api/public/${token}/answers`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question_id: questionId, student_move: move, explanation }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Could not save your answer');
+      }
+      setDraftSaveError(null);
+    } catch {
+      setDraftSaveError('Could not save your answer. Please try again before continuing.');
     } finally {
       setDrafts((prev) => ({
         ...prev,
@@ -220,6 +228,21 @@ export function StudentShell({
   const unresolvedConfiguredCount = questions.filter(
     (q) => hasAcceptedMoves(q) && !drafts[q.id]?.resultVisible,
   ).length;
+  const blockedFromCompletion = unresolvedConfiguredCount > 0;
+
+  function getQuestionState(question: QuestionWithAnswer): {
+    label: string;
+    tone: 'muted' | 'warning' | 'success' | 'danger';
+  } {
+    const draft = drafts[question.id];
+    if (!draft?.student_move) return { label: 'Not answered', tone: 'muted' };
+    if (!draft.resultVisible || draft.is_correct === null) {
+      return { label: 'Answered, not checked', tone: 'warning' };
+    }
+    return draft.is_correct
+      ? { label: 'Checked correct', tone: 'success' }
+      : { label: 'Checked incorrect', tone: 'danger' };
+  }
 
   async function handleSubmit() {
     if (unresolvedConfiguredCount > 0) {
@@ -284,22 +307,64 @@ export function StudentShell({
               Question {currentIndex + 1} of {questions.length}
             </p>
             <div className="flex gap-1">
-              {questions.map((q, i) => (
-                <div
-                  key={q.id}
-                  className={`h-1.5 w-8 rounded-full transition-colors ${
-                    i < currentIndex
-                      ? 'bg-stone-400'
-                      : i === currentIndex
-                        ? 'bg-amber-500'
-                        : 'bg-stone-200'
-                  }`}
-                />
-              ))}
+              {questions.map((q, i) => {
+                const state = getQuestionState(q);
+                return (
+                  <div key={q.id} className="flex flex-col items-center gap-1">
+                    <div
+                      className={`h-1.5 w-8 rounded-full transition-colors ${
+                        i < currentIndex
+                          ? 'bg-stone-400'
+                          : i === currentIndex
+                            ? 'bg-amber-500'
+                            : 'bg-stone-200'
+                      }`}
+                    />
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        state.tone === 'success'
+                          ? 'bg-green-500'
+                          : state.tone === 'danger'
+                            ? 'bg-red-500'
+                            : state.tone === 'warning'
+                              ? 'bg-amber-500'
+                              : 'bg-stone-300'
+                      }`}
+                      title={`Q${i + 1}: ${state.label}`}
+                    />
+                  </div>
+                );
+              })}
             </div>
+            <p className="text-[11px] text-stone-500">
+              Gray: not answered · Amber: answered not checked · Green: checked correct · Red:
+              checked incorrect
+            </p>
           </div>
         </div>
       </header>
+
+      {!completed && blockedFromCompletion && (
+        <div className="mx-auto max-w-5xl px-4 pt-4">
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-900">
+              Check all configured questions before completing this assignment.
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              {unresolvedConfiguredCount} question
+              {unresolvedConfiguredCount === 1 ? '' : 's'} left to check.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {draftSaveError && (
+        <div className="mx-auto max-w-5xl px-4 pt-4">
+          <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800">{draftSaveError}</p>
+          </div>
+        </div>
+      )}
 
       {isReviewed && (assignment.overall_feedback || assignment.grade) && (
         <div className="mx-auto max-w-5xl px-4 pt-4">
@@ -538,9 +603,13 @@ export function StudentShell({
               <Button
                 variant="primary"
                 onClick={handleSubmit}
-                disabled={submitting || unresolvedConfiguredCount > 0}
+                disabled={submitting || blockedFromCompletion}
               >
-                {submitting ? 'Completing...' : 'Complete assignment'}
+                {submitting
+                  ? 'Completing...'
+                  : blockedFromCompletion
+                    ? 'Check all questions first'
+                    : 'Complete self-review'}
               </Button>
             </div>
           ) : (

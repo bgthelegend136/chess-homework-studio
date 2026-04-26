@@ -3,7 +3,6 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Board } from '@/components/chess/Board';
 import { Textarea } from '@/components/ui/Textarea';
-import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { Assignment, Question, Answer, Evaluation } from '@/lib/types';
@@ -72,10 +71,6 @@ export function ReviewShell({
       return initial;
     },
   );
-  const [overallFeedback, setOverallFeedback] = useState(
-    assignment.overall_feedback ?? '',
-  );
-  const [grade, setGrade] = useState(assignment.grade ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -114,8 +109,8 @@ export function ReviewShell({
               evaluation: Evaluation | null;
             } => x !== null,
           ),
-        overallFeedback,
-        grade,
+        overallFeedback: '',
+        grade: '',
       };
       await onSaveReview(payload);
       setSavedAt(Date.now());
@@ -357,34 +352,13 @@ export function ReviewShell({
           })
         )}
 
-        <section className="rounded-lg border border-stone-200 bg-white shadow-sm p-5 flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-stone-800">
-            Optional summary
-          </h2>
-          <Textarea
-            id="overall-feedback"
-            label="Extra notes from the coach"
-            value={overallFeedback}
-            onChange={(e) => setOverallFeedback(e.target.value)}
-            rows={4}
-            placeholder="Optional summary comments..."
-          />
-          <Input
-            id="grade"
-            label="Grade (optional)"
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            placeholder="e.g. A, 8/10, Pass"
-          />
-        </section>
-
         <div className="flex items-center justify-between gap-4 pb-8">
           <div className="text-xs text-stone-500">
             {error && <span className="text-red-600">{error}</span>}
             {!error && savedAt && <span>Saved.</span>}
           </div>
           <Button variant="primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? 'Saving...' : 'Save optional feedback'}
+            {saving ? 'Saving...' : 'Save review'}
           </Button>
         </div>
       </div>
