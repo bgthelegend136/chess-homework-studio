@@ -23,6 +23,9 @@ interface ReviewShellProps {
   onSaveReview: (payload: ReviewPayload) => Promise<void>;
 }
 
+const DEFAULT_INCORRECT_FEEDBACK =
+  'Review the coach explanation carefully and bring questions to the next lesson.';
+
 function moveToSquares(fen: string, san: string | null): [string, string] | null {
   if (!san) return null;
   try {
@@ -87,6 +90,41 @@ export function ReviewShell({
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [questions, answersByQuestion]);
 
+  function fillMissingEvaluations(
+    predicate: (answer: Answer) => boolean,
+    evaluation: Evaluation,
+  ) {
+    setPerQuestionEval((prev) => {
+      const next = { ...prev };
+      for (const q of questions) {
+        const answer = answersByQuestion[q.id];
+        if (!answer || !predicate(answer) || next[q.id]) continue;
+        next[q.id] = evaluation;
+      }
+      return next;
+    });
+  }
+
+  function fillIncorrectFeedback() {
+    setPerQuestionFeedback((prev) => {
+      const next = { ...prev };
+      for (const q of questions) {
+        const answer = answersByQuestion[q.id];
+        if (answer?.is_correct !== false || next[q.id]?.trim()) continue;
+        next[q.id] = DEFAULT_INCORRECT_FEEDBACK;
+      }
+      return next;
+    });
+  }
+
+  function clearEvaluations() {
+    setPerQuestionEval((prev) => {
+      const next = { ...prev };
+      for (const q of questions) next[q.id] = '';
+      return next;
+    });
+  }
+
   async function handleSubmit() {
     setError(null);
     setSaving(true);
@@ -139,6 +177,80 @@ export function ReviewShell({
           </div>
           <Badge variant="success">Completed</Badge>
         </header>
+
+        <section className="rounded-lg border border-stone-200 bg-white shadow-sm p-4">
+          <div className="mb-3 flex flex-col gap-1">
+            <h2 className="text-sm font-semibold text-stone-800">
+              Bulk shortcuts
+            </h2>
+            <p className="text-xs text-stone-500">
+              Fill buttons only set missing fields. Changes are not saved until you click
+              Save review.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                fillMissingEvaluations(
+                  (answer) => answer.is_correct === true,
+                  'correct',
+                )
+              }
+              title="Missing evaluations for correct checked answers become Correct."
+            >
+              Fill correct
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                fillMissingEvaluations(
+                  (answer) => answer.is_correct === false,
+                  'mistake',
+                )
+              }
+              title="Missing evaluations for incorrect checked answers become Mistake."
+            >
+              Fill mistakes
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                fillMissingEvaluations(
+                  (answer) => answer.is_correct === null,
+                  'blunder',
+                )
+              }
+              title="Missing evaluations for saved unchecked answers become Blunder. Missing answer rows are skipped."
+            >
+              Fill blunders
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={fillIncorrectFeedback}
+              title="Fill empty feedback on incorrect answers."
+            >
+              Feedback for incorrect
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={clearEvaluations}
+              title="Clears all local evaluation selections. Nothing is saved until Save review."
+            >
+              Clear evaluations
+            </Button>
+          </div>
+        </section>
 
         <section className="rounded-lg border border-stone-200 bg-white shadow-sm p-5">
           <h2 className="text-sm font-semibold text-stone-800 mb-3">
@@ -241,6 +353,37 @@ export function ReviewShell({
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded border border-stone-200 bg-white p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1">
+                          Attempts
+                        </p>
+                        <p className="text-sm text-stone-700">
+                          {ans
+                            ? `${ans.attempt_count ?? 0} check${
+                                (ans.attempt_count ?? 0) === 1 ? '' : 's'
+                              }`
+                            : 'No answer'}
+                        </p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          Hint {ans?.hint_used ? 'used' : 'not used'}
+                        </p>
+                      </div>
+
+                      <div className="rounded border border-stone-200 bg-white p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1">
+                          Hint
+                        </p>
+                        {q.hint ? (
+                          <p className="text-sm text-stone-700 whitespace-pre-wrap">
+                            {q.hint}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-stone-400 italic">
+                            No hint configured
+                          </p>
+                        )}
+                      </div>
+
                       <div className="rounded border border-stone-200 bg-white p-3">
                         <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1">
                           Accepted move(s)

@@ -50,9 +50,21 @@ export async function POST(
 
   const { data: answer } = await supabase
     .from('answers')
-    .select('id, student_move')
+    .select('id, student_move, is_correct, attempt_count, hint_used')
     .eq('question_id', question.id)
     .maybeSingle();
+
+  const storedAttemptCount = answer?.attempt_count ?? 0;
+  const attemptCount =
+    answer?.is_correct !== null && answer?.is_correct !== undefined && storedAttemptCount === 0
+      ? 2
+      : storedAttemptCount;
+  if (attemptCount >= 2) {
+    return NextResponse.json(
+      { error: 'This answer is already locked.' },
+      { status: 409 },
+    );
+  }
 
   const result = checkAcceptedMove(
     question.fen,
@@ -64,11 +76,21 @@ export async function POST(
     return NextResponse.json({ error: result.message }, { status: 400 });
   }
 
+  const nextAttemptCount = attemptCount + 1;
+  const finalResult =
+    result.canCheck && (result.isCorrect === true || nextAttemptCount >= 2)
+      ? result.isCorrect
+      : result.canCheck
+        ? false
+        : null;
+
   const { error } = await supabase.from('answers').upsert(
     {
       question_id: question.id,
       student_move: answer?.student_move ?? null,
-      is_correct: result.canCheck ? result.isCorrect : null,
+      is_correct: finalResult,
+      attempt_count: result.canCheck ? nextAttemptCount : attemptCount,
+      hint_used: answer?.hint_used ?? false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'question_id' },
@@ -78,5 +100,10 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    ...result,
+    isCorrect: finalResult,
+    attemptCount: result.canCheck ? nextAttemptCount : attemptCount,
+    canRetry: result.canCheck && result.isCorrect === false && nextAttemptCount < 2,
+  });
 }

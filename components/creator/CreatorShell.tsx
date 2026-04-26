@@ -73,6 +73,7 @@ export function CreatorShell({
             prompt: q.prompt,
             coach_reference_answer: q.coach_reference_answer ?? '',
             coach_explanation: q.coach_explanation ?? '',
+            hint: q.hint ?? '',
             coach_notes: q.coach_notes ?? '',
             tags: (q.tags ?? []).filter((tag) =>
               (QUESTION_TAGS as readonly string[]).includes(tag),
@@ -88,14 +89,17 @@ export function CreatorShell({
   useEffect(() => {
     if (pgnLocked) return;
     function handleKey(e: KeyboardEvent) {
-      const tag = document.activeElement?.tagName;
+      const activeElement = document.activeElement;
+      const tag = activeElement?.tagName;
       if (
         e.key.toLowerCase() === 'q' &&
         !e.ctrlKey &&
         !e.metaKey &&
         tag !== 'INPUT' &&
         tag !== 'TEXTAREA' &&
-        tag !== 'SELECT'
+        tag !== 'SELECT' &&
+        tag !== 'BUTTON' &&
+        activeElement?.getAttribute('contenteditable') !== 'true'
       ) {
         e.preventDefault();
         dispatch({ type: 'ADD_QUESTION_FROM_SELECTED' });

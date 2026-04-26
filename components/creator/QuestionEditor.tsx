@@ -135,6 +135,23 @@ export function QuestionEditor({
         placeholder="Explain the idea, candidate moves, and what the student should notice."
         disabled={readOnly}
       />
+
+      <Textarea
+        id={`hint-${index}`}
+        label="Hint (optional)"
+        hint="Student can reveal this before checking. It is tracked if used."
+        value={question.hint}
+        onChange={(e) =>
+          dispatch({
+            type: 'UPDATE_EDITING',
+            patch: { hint: e.target.value },
+          })
+        }
+        rows={2}
+        placeholder="A small nudge without giving away the answer."
+        disabled={readOnly}
+      />
+
       {!readOnly && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">

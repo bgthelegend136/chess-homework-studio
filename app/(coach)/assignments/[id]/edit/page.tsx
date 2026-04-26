@@ -82,6 +82,12 @@ export default async function AssignmentEditPage({ params }: Props) {
         <span className="text-stone-400 text-xs ml-1">
           — {(assignment as { students: { name: string } }).students.name}
         </span>
+        <Link
+          href={`/assignments/${params.id}/duplicate`}
+          className="ml-auto text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded px-2.5 py-1 transition-colors"
+        >
+          Duplicate
+        </Link>
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col" style={{ height: 'calc(100vh - 96px)' }}>

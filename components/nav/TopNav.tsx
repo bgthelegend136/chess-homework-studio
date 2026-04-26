@@ -16,6 +16,7 @@ export function TopNav({ email }: TopNavProps) {
     { href: '/dashboard', label: 'Assignments' },
     { href: '/students', label: 'Students' },
     { href: '/groups', label: 'Groups' },
+    { href: '/openings', label: 'Openings' },
   ];
 
   async function handleSignOut() {

@@ -11,6 +11,7 @@ export interface DraftQuestion {
   prompt: string;
   coach_reference_answer: string;
   coach_explanation: string;
+  hint: string;
   coach_notes: string;
   tags: string[];
   calculation_depth: CalculationDepth;
@@ -43,6 +44,7 @@ export type CreatorAction =
           | 'prompt'
           | 'coach_reference_answer'
           | 'coach_explanation'
+          | 'hint'
           | 'coach_notes'
           | 'tags'
           | 'calculation_depth'
@@ -112,6 +114,7 @@ export function creatorReducer(
         prompt: '',
         coach_reference_answer: '',
         coach_explanation: '',
+        hint: '',
         coach_notes: '',
         tags: [],
         calculation_depth: 'none',

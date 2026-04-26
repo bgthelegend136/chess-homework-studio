@@ -3,8 +3,18 @@ import { notFound } from 'next/navigation';
 import { requireCoach } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Badge } from '@/components/ui/Badge';
-import { STATUS_LABEL, STATUS_VARIANT } from '@/lib/assignments/labels';
-import type { Assignment, Evaluation, Student, StudentGroup } from '@/lib/types';
+import {
+  CALCULATION_DEPTH_LABEL,
+  STATUS_LABEL,
+  STATUS_VARIANT,
+} from '@/lib/assignments/labels';
+import type {
+  Assignment,
+  CalculationDepth,
+  Evaluation,
+  Student,
+  StudentGroup,
+} from '@/lib/types';
 
 interface Props {
   params: { id: string };
@@ -65,6 +75,7 @@ export default async function StudentDetailPage({ params }: Props) {
 
   type WeakQuestionRow = {
     tags: string[] | null;
+    calculation_depth: CalculationDepth | null;
     answers:
       | { is_correct: boolean | null; evaluation: Evaluation | null }[]
       | { is_correct: boolean | null; evaluation: Evaluation | null }
@@ -72,7 +83,16 @@ export default async function StudentDetailPage({ params }: Props) {
   };
 
   const assignmentIds = list.map((a) => a.id);
+  const recentAssignments = list.slice(0, 10);
   let weakAreas: Array<[string, number]> = [];
+  const depthStats: Record<
+    CalculationDepth,
+    { correct: number; incorrect: number; total: number }
+  > = {
+    none: { correct: 0, incorrect: 0, total: 0 },
+    short: { correct: 0, incorrect: 0, total: 0 },
+    long: { correct: 0, incorrect: 0, total: 0 },
+  };
   const evaluationCounts: Record<Evaluation, number> = {
     blunder: 0,
     mistake: 0,
@@ -86,7 +106,7 @@ export default async function StudentDetailPage({ params }: Props) {
   if (assignmentIds.length > 0) {
     const { data: questionRows } = await supabase
       .from('questions')
-      .select('tags, answers(is_correct, evaluation)')
+      .select('tags, calculation_depth, answers(is_correct, evaluation)')
       .in('assignment_id', assignmentIds);
 
     const weakCounts: Record<string, number> = {};
@@ -101,6 +121,11 @@ export default async function StudentDetailPage({ params }: Props) {
           checkedTotal += 1;
           if (answer.is_correct) checkedCorrectCount += 1;
           else checkedIncorrectCount += 1;
+
+          const depth = row.calculation_depth ?? 'none';
+          depthStats[depth].total += 1;
+          if (answer.is_correct) depthStats[depth].correct += 1;
+          else depthStats[depth].incorrect += 1;
         }
         if (
           answer.evaluation &&
@@ -124,7 +149,7 @@ export default async function StudentDetailPage({ params }: Props) {
   const checkedCorrectPct = checkedTotal > 0 ? Math.round((checkedCorrectCount / checkedTotal) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-3xl w-full p-6">
+    <div className="mx-auto max-w-4xl w-full p-6">
       <div className="text-sm text-stone-500 mb-4">
         <Link href="/students" className="hover:text-stone-800">
           Students
@@ -284,8 +309,54 @@ export default async function StudentDetailPage({ params }: Props) {
         )}
       </div>
 
+      <div className="mb-6 rounded border border-stone-200 bg-white p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-3">
+          Performance by calculation depth
+        </p>
+        {checkedTotal === 0 ? (
+          <p className="text-sm text-stone-500">
+            No checked answers yet.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(['none', 'short', 'long'] as const).map((depth) => {
+              const stats = depthStats[depth];
+              const pct =
+                stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+              return (
+                <div
+                  key={depth}
+                  className="rounded border border-stone-200 bg-stone-50 p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-stone-800">
+                      {CALCULATION_DEPTH_LABEL[depth]}
+                    </p>
+                    <span className="text-xs text-stone-500">
+                      {stats.total} checked
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200">
+                    <div
+                      className="h-full bg-green-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-stone-600">
+                    <span>{pct}%</span>
+                    <span>
+                      {stats.correct} correct / {stats.incorrect} wrong
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <h2 className="text-sm font-semibold text-stone-700 mb-2">
-        Assignment history ({list.length})
+        Recent assignment history ({list.length})
       </h2>
       {list.length === 0 ? (
         <div className="rounded-lg border border-dashed border-stone-300 bg-white p-8 text-center text-stone-500 text-sm">
@@ -293,10 +364,10 @@ export default async function StudentDetailPage({ params }: Props) {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-stone-200 divide-y divide-stone-100 overflow-hidden shadow-sm">
-          {list.map((a) => (
+          {recentAssignments.map((a) => (
             <div
               key={a.id}
-              className="flex items-center gap-4 px-4 py-3 hover:bg-stone-50"
+              className="flex flex-col gap-3 px-4 py-3 hover:bg-stone-50 sm:flex-row sm:items-center"
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-stone-800 truncate">{a.title}</p>
@@ -308,7 +379,7 @@ export default async function StudentDetailPage({ params }: Props) {
                 </p>
               </div>
               <Badge variant={STATUS_VARIANT[a.status]}>{STATUS_LABEL[a.status]}</Badge>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 shrink-0">
                 {a.status !== 'submitted' && a.status !== 'reviewed' && (
                   <Link
                     href={`/assignments/${a.id}/edit`}
@@ -325,6 +396,12 @@ export default async function StudentDetailPage({ params }: Props) {
                     Answer Analysis
                   </Link>
                 )}
+                <Link
+                  href={`/assignments/${a.id}/duplicate`}
+                  className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded px-2.5 py-1"
+                >
+                  Duplicate
+                </Link>
               </div>
             </div>
           ))}

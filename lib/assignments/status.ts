@@ -32,7 +32,7 @@ export async function submitByToken(token: string): Promise<void> {
 
   const { data: assignment, error } = await supabase
     .from('assignments')
-    .select('id, status')
+    .select('id, status, coach_id, title, students(name)')
     .eq('student_token', token)
     .single();
 
@@ -51,6 +51,37 @@ export async function submitByToken(token: string): Promise<void> {
     .eq('id', assignment.id);
 
   if (updateError) throw updateError;
+
+  try {
+    const student = Array.isArray(assignment.students)
+      ? assignment.students[0]
+      : assignment.students;
+    const studentName = student?.name ?? 'A student';
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert({
+        coach_id: assignment.coach_id,
+        assignment_id: assignment.id,
+        type: 'assignment_submitted',
+        title: `Student completed assignment: ${assignment.title}`,
+        body: `${studentName} completed "${assignment.title}".`,
+      });
+
+    if (notificationError && notificationError.code !== '23505') {
+      console.error('Failed to create assignment submission notification', {
+        assignmentId: assignment.id,
+        error: notificationError.message,
+      });
+    }
+  } catch (notificationError) {
+    console.error('Failed to create assignment submission notification', {
+      assignmentId: assignment.id,
+      error:
+        notificationError instanceof Error
+          ? notificationError.message
+          : String(notificationError),
+    });
+  }
 }
 
 export async function markReviewed(

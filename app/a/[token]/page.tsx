@@ -47,6 +47,8 @@ export default async function StudentAssignmentPage({ params }: Props) {
       student_move: string | null;
       explanation: string | null;
       is_correct: boolean | null;
+      hint_used: boolean;
+      attempt_count: number;
     }
   > = {};
   for (const q of typedQuestions) {
@@ -55,6 +57,8 @@ export default async function StudentAssignmentPage({ params }: Props) {
         student_move: q.answers.student_move,
         explanation: q.answers.explanation,
         is_correct: q.answers.is_correct,
+        hint_used: q.answers.hint_used ?? false,
+        attempt_count: q.answers.attempt_count ?? 0,
       };
     }
   }

@@ -18,6 +18,8 @@ interface StudentShellProps {
       student_move: string | null;
       explanation: string | null;
       is_correct: boolean | null;
+      hint_used: boolean;
+      attempt_count: number;
     }
   >;
 }
@@ -28,7 +30,11 @@ type AnswerDraft = {
   saving: boolean;
   checking: boolean;
   is_correct: boolean | null;
+  hintUsed: boolean;
+  hintVisible: boolean;
+  attemptCount: number;
   resultVisible: boolean;
+  canRetry: boolean;
   checkMessage: string | null;
   checkError: string | null;
 };
@@ -39,6 +45,8 @@ type CheckResponse = {
   canCheck: boolean;
   isCorrect: boolean | null;
   message: string | null;
+  attemptCount: number;
+  canRetry: boolean;
 };
 
 function dueDateBadge(due: string | null): {
@@ -88,13 +96,21 @@ export function StudentShell({
     for (const q of questions) {
       const existing = initialAnswers[q.id];
       const checkedResult = existing?.is_correct ?? null;
+      const storedAttemptCount = existing?.attempt_count ?? 0;
+      const attemptCount =
+        checkedResult !== null && storedAttemptCount === 0 ? 2 : storedAttemptCount;
+      const retryAvailable = checkedResult === false && attemptCount === 1;
       result[q.id] = {
         student_move: existing?.student_move ?? '',
         explanation: existing?.explanation ?? '',
         saving: false,
         checking: false,
         is_correct: checkedResult,
+        hintUsed: existing?.hint_used ?? false,
+        hintVisible: existing?.hint_used ?? false,
+        attemptCount,
         resultVisible: checkedResult !== null,
+        canRetry: retryAvailable,
         checkMessage: null,
         checkError: null,
       };
@@ -112,8 +128,16 @@ export function StudentShell({
   const currentDraft = currentQuestion ? drafts[currentQuestion.id] : null;
   const completed = submitted;
 
-  async function saveDraft(questionId: string, move: string, explanation: string) {
-    if (drafts[questionId]?.resultVisible) return;
+  async function saveDraft(
+    questionId: string,
+    move: string,
+    explanation: string,
+    hintUsed?: boolean,
+  ) {
+    const draft = drafts[questionId];
+    if (!draft) return;
+    const locked = submitted || draft.is_correct === true || draft.attemptCount >= 2;
+    if (locked && hintUsed !== true) return;
     setDrafts((prev) => ({
       ...prev,
       [questionId]: { ...prev[questionId], saving: true },
@@ -123,7 +147,12 @@ export function StudentShell({
       const res = await fetch(`/api/public/${token}/answers`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question_id: questionId, student_move: move, explanation }),
+        body: JSON.stringify({
+          question_id: questionId,
+          student_move: move,
+          explanation,
+          hint_used: hintUsed,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -147,8 +176,10 @@ export function StudentShell({
         [questionId]: {
           ...prev[questionId],
           student_move: san,
-          is_correct: null,
+          is_correct:
+            prev[questionId].attemptCount === 0 ? null : prev[questionId].is_correct,
           resultVisible: false,
+          canRetry: false,
           checkMessage: null,
           checkError: null,
         },
@@ -198,7 +229,9 @@ export function StudentShell({
           ...prev[question.id],
           checking: false,
           is_correct: result.isCorrect,
+          attemptCount: result.attemptCount,
           resultVisible: true,
+          canRetry: result.canRetry,
           checkMessage: result.message,
           checkError: null,
         },
@@ -226,7 +259,13 @@ export function StudentShell({
   }
 
   const unresolvedConfiguredCount = questions.filter(
-    (q) => hasAcceptedMoves(q) && !drafts[q.id]?.resultVisible,
+    (q) => {
+      const draft = drafts[q.id];
+      return (
+        hasAcceptedMoves(q) &&
+        !(draft?.is_correct === true || (draft?.attemptCount ?? 0) >= 2)
+      );
+    },
   ).length;
   const blockedFromCompletion = unresolvedConfiguredCount > 0;
 
@@ -236,7 +275,14 @@ export function StudentShell({
   } {
     const draft = drafts[question.id];
     if (!draft?.student_move) return { label: 'Not answered', tone: 'muted' };
-    if (!draft.resultVisible || draft.is_correct === null) {
+    if (draft.canRetry) {
+      return { label: 'Try again available', tone: 'warning' };
+    }
+    if (
+      !draft.resultVisible ||
+      draft.is_correct === null ||
+      (draft.is_correct === false && draft.attemptCount < 2)
+    ) {
       return { label: 'Answered, not checked', tone: 'warning' };
     }
     return draft.is_correct
@@ -275,9 +321,22 @@ export function StudentShell({
 
   const due = dueDateBadge(assignment.due_date);
   const acceptedMoves = splitAcceptedMoves(currentQuestion.coach_reference_answer);
-  const canEditCurrent = !currentDraft?.resultVisible;
+  const currentLocked =
+    completed ||
+    currentDraft?.is_correct === true ||
+    (currentDraft?.attemptCount ?? 0) >= 2;
+  const canEditCurrent = !currentLocked && !currentDraft?.resultVisible;
+  const canShowHint =
+    !completed &&
+    Boolean(currentQuestion.hint?.trim()) &&
+    !currentDraft?.hintVisible &&
+    !currentLocked;
+  const revealFinalReview =
+    acceptedMoves.length === 0 ||
+    currentDraft?.is_correct === true ||
+    (currentDraft?.attemptCount ?? 0) >= 2;
   const showSelfReview =
-    acceptedMoves.length === 0 || currentDraft?.resultVisible;
+    revealFinalReview || currentDraft?.resultVisible;
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -442,17 +501,51 @@ export function StudentShell({
             </div>
 
             {canEditCurrent ? (
-              <Textarea
-                id={`explanation-${currentQuestion.id}`}
-                label="Your reasoning"
-                value={currentDraft?.explanation ?? ''}
-                onChange={(e) =>
-                  handleExplanationChange(currentQuestion.id, e.target.value)
-                }
-                onBlur={() => handleExplanationBlur(currentQuestion.id)}
-                rows={5}
-                placeholder="Explain your thinking - candidate moves, key squares, plans..."
-              />
+              <div className="flex flex-col gap-3">
+                {canShowHint && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={async () => {
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [currentQuestion.id]: {
+                          ...prev[currentQuestion.id],
+                          hintVisible: true,
+                          hintUsed: true,
+                        },
+                      }));
+                      await saveDraft(
+                        currentQuestion.id,
+                        currentDraft?.student_move ?? '',
+                        currentDraft?.explanation ?? '',
+                        true,
+                      );
+                    }}
+                  >
+                    Show hint
+                  </Button>
+                )}
+                {currentDraft?.hintVisible && currentQuestion.hint && (
+                  <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-blue-700">
+                      Hint
+                    </p>
+                    <p className="whitespace-pre-wrap">{currentQuestion.hint}</p>
+                  </div>
+                )}
+                <Textarea
+                  id={`explanation-${currentQuestion.id}`}
+                  label="Your reasoning"
+                  value={currentDraft?.explanation ?? ''}
+                  onChange={(e) =>
+                    handleExplanationChange(currentQuestion.id, e.target.value)
+                  }
+                  onBlur={() => handleExplanationBlur(currentQuestion.id)}
+                  rows={5}
+                  placeholder="Explain your thinking - candidate moves, key squares, plans..."
+                />
+              </div>
             ) : (
               <div>
                 <label className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1 block">
@@ -490,6 +583,32 @@ export function StudentShell({
                   <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
                     This question has no self-review answer configured yet.
                   </p>
+                ) : currentDraft?.canRetry ? (
+                  <div className="rounded border border-red-200 bg-red-50 p-3">
+                    <p className="text-sm font-semibold text-red-800">Incorrect</p>
+                    <p className="mt-1 text-sm text-red-700">
+                      Try once more before the answer is revealed.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="mt-3"
+                      onClick={() =>
+                        setDrafts((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: {
+                            ...prev[currentQuestion.id],
+                            resultVisible: false,
+                            canRetry: false,
+                            checkMessage: null,
+                            checkError: null,
+                          },
+                        }))
+                      }
+                    >
+                      Try again
+                    </Button>
+                  </div>
                 ) : currentDraft?.is_correct === null ? (
                   <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
                     {currentDraft?.checkMessage ??
@@ -507,7 +626,7 @@ export function StudentShell({
                   </div>
                 )}
 
-                {acceptedMoves.length > 0 && (
+                {acceptedMoves.length > 0 && revealFinalReview && (
                   <div className="mt-4 flex flex-col gap-3">
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1">
