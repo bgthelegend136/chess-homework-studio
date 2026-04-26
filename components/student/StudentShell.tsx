@@ -397,7 +397,11 @@ export function StudentShell({
       )}
 
       <main className="mx-auto max-w-5xl px-4 py-6">
-        <div className="mb-6">
+        <div
+          className="mb-6"
+          data-testid="current-question-meta"
+          data-question-id={currentQuestion.id}
+        >
           <p className="text-xs text-stone-500 uppercase tracking-wide mb-1">
             Question {currentIndex + 1} - Position after move {currentQuestion.move_number}
           </p>

@@ -1,6 +1,9 @@
 node_modules/ 
 .next/ 
 .env.local 
+.env.e2e.local
 *.log 
 tsconfig.tsbuildinfo 
 .claude/settings.local.json 
+playwright-report/
+test-results/

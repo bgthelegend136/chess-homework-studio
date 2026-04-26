@@ -179,6 +179,8 @@ export function CreatorShell({
         </div>
         <button
           onClick={copyLink}
+          data-testid="copy-student-link"
+          data-student-link={studentLink}
           className="text-sm text-amber-600 hover:text-amber-800 border border-amber-300 rounded px-3 py-1.5 transition-colors"
         >
           {copied ? 'Copied!' : 'Copy student link'}
