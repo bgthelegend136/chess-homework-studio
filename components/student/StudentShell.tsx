@@ -133,11 +133,11 @@ export function StudentShell({
     move: string,
     explanation: string,
     hintUsed?: boolean,
-  ) {
+  ): Promise<boolean> {
     const draft = drafts[questionId];
-    if (!draft) return;
+    if (!draft) return false;
     const locked = submitted || draft.is_correct === true || draft.attemptCount >= 2;
-    if (locked && hintUsed !== true) return;
+    if (locked && hintUsed !== true) return false;
     setDrafts((prev) => ({
       ...prev,
       [questionId]: { ...prev[questionId], saving: true },
@@ -159,8 +159,10 @@ export function StudentShell({
         throw new Error(body.error ?? 'Could not save your answer');
       }
       setDraftSaveError(null);
+      return true;
     } catch {
       setDraftSaveError('Could not save your answer. Please try again before continuing.');
+      return false;
     } finally {
       setDrafts((prev) => ({
         ...prev,
@@ -212,7 +214,18 @@ export function StudentShell({
     }));
 
     try {
-      await saveDraft(question.id, draft.student_move, draft.explanation);
+      const saved = await saveDraft(question.id, draft.student_move, draft.explanation);
+      if (!saved) {
+        setDrafts((prev) => ({
+          ...prev,
+          [question.id]: {
+            ...prev[question.id],
+            checking: false,
+            checkError: 'Could not save your answer. Please try again before checking.',
+          },
+        }));
+        return;
+      }
       const res = await fetch(`/api/public/${token}/answers/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -220,6 +233,27 @@ export function StudentShell({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 409) {
+          const result = body as Partial<CheckResponse>;
+          setDrafts((prev) => ({
+            ...prev,
+            [question.id]: {
+              ...prev[question.id],
+              checking: false,
+              is_correct:
+                result.isCorrect === true || result.isCorrect === false
+                  ? result.isCorrect
+                  : prev[question.id].is_correct,
+              attemptCount: result.attemptCount ?? 2,
+              resultVisible: true,
+              canRetry: false,
+              checkMessage:
+                result.message ?? 'This answer is already locked.',
+              checkError: null,
+            },
+          }));
+          return;
+        }
         throw new Error(body.error ?? 'Could not check this answer');
       }
       const result = body as CheckResponse;
@@ -341,15 +375,17 @@ export function StudentShell({
   return (
     <div className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white px-4 py-3">
-        <div className="mx-auto max-w-5xl flex items-start justify-between gap-4">
-          <div>
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs text-stone-500 uppercase tracking-wide">
               Assignment from coach
             </p>
-            <h1 className="text-lg font-semibold text-stone-800">{assignment.title}</h1>
+            <h1 className="text-xl font-semibold leading-tight text-stone-800 sm:text-lg">
+              {assignment.title}
+            </h1>
             {due && (
               <span
-                className={`inline-block mt-1 text-xs px-2 py-0.5 rounded border ${
+                className={`mt-2 inline-flex max-w-full rounded border px-2 py-1 text-xs leading-snug ${
                   due.variant === 'danger'
                     ? 'bg-red-50 border-red-200 text-red-700'
                     : due.variant === 'warning'
@@ -361,11 +397,11 @@ export function StudentShell({
               </span>
             )}
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <p className="text-xs text-stone-500">
+          <div className="flex flex-col gap-1 sm:items-end">
+            <p className="text-xs text-stone-500 sm:text-right">
               Question {currentIndex + 1} of {questions.length}
             </p>
-            <div className="flex gap-1">
+            <div className={`flex gap-1 ${questions.length === 1 ? 'hidden' : ''}`}>
               {questions.map((q, i) => {
                 const state = getQuestionState(q);
                 return (
@@ -395,8 +431,12 @@ export function StudentShell({
                 );
               })}
             </div>
-            <p className="text-[11px] text-stone-500">
-              Gray: not answered · Amber: answered not checked · Green: checked correct · Red:
+            <p
+              className={`hidden max-w-md text-[11px] leading-4 text-stone-500 sm:block sm:text-right ${
+                questions.length === 1 ? 'sm:hidden' : ''
+              }`}
+            >
+              Gray: not answered - Amber: answered not checked - Green: checked correct - Red:
               checked incorrect
             </p>
           </div>
@@ -455,7 +495,7 @@ export function StudentShell({
         </div>
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      <main className={`mx-auto max-w-5xl px-4 py-6 ${completed ? '' : 'pb-28'}`}>
         <div
           className="mb-6"
           data-testid="current-question-meta"
@@ -469,8 +509,8 @@ export function StudentShell({
           </h2>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="shrink-0 w-full max-w-[520px] lg:w-[520px]">
+        <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+          <div className="w-full shrink-0 lg:w-[520px]">
             <AnswerBoard
               fen={currentQuestion.fen}
               sideToMove={currentQuestion.side_to_move}
@@ -689,8 +729,12 @@ export function StudentShell({
         </div>
       </main>
 
-      <footer className="border-t border-stone-200 bg-white sticky bottom-0 px-4 py-3">
-        <div className="mx-auto max-w-5xl flex items-center justify-between gap-4">
+      <footer
+        className={`border-t border-stone-200 bg-white px-4 py-3 ${
+          completed ? '' : 'sticky bottom-0 z-10 shadow-[0_-1px_8px_rgba(0,0,0,0.04)]'
+        }`}
+      >
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <Button
             variant="secondary"
             onClick={() => goTo(currentIndex - 1)}
@@ -732,7 +776,7 @@ export function StudentShell({
                   ? 'Completing...'
                   : blockedFromCompletion
                     ? 'Check all questions first'
-                    : 'Complete self-review'}
+                    : 'Complete'}
               </Button>
             </div>
           ) : (

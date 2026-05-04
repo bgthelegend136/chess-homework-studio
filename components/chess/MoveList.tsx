@@ -26,7 +26,7 @@ export function MoveList({
 }: MoveListProps) {
   if (plies.length === 0) {
     return (
-      <p className="text-sm text-stone-400 text-center py-6">
+      <p className="py-6 text-center text-sm text-stone-400">
         Paste a PGN to see moves
       </p>
     );
@@ -59,7 +59,7 @@ export function MoveList({
             className="flex flex-wrap items-center gap-x-1 gap-y-0.5 border-l border-stone-200 pl-2"
             style={{ marginLeft: depth * 14 }}
           >
-            <span className="w-7 shrink-0 text-right text-xs text-stone-400 font-mono">
+            <span className="w-7 shrink-0 text-right font-mono text-xs text-stone-400">
               {rowMoveNumber}.
             </span>
             {row}
@@ -93,7 +93,7 @@ export function MoveList({
           >
             {node.san}
             {questionFens.has(node.fen) && (
-              <span className="ml-1 text-amber-500 text-xs">*</span>
+              <span className="ml-1 text-xs text-amber-500">*</span>
             )}
           </button>,
         );
@@ -113,13 +113,12 @@ export function MoveList({
     };
 
     return (
-      <div className="flex flex-col gap-0.5 text-sm select-none">
+      <div className="flex select-none flex-col gap-0.5 text-sm">
         {renderLine(moveTree, 0)}
       </div>
     );
   }
 
-  // Group into move pairs for display
   const movePairs: Array<{ moveNumber: number; white?: Ply; black?: Ply }> = [];
   for (let i = 0; i < plies.length; i++) {
     const ply = plies[i];
@@ -148,35 +147,35 @@ export function MoveList({
   };
 
   return (
-    <div className="flex flex-col gap-0.5 text-sm select-none">
+    <div className="flex select-none flex-col gap-0.5 text-sm">
       {movePairs.map(({ moveNumber, white, black }) => (
         <div key={moveNumber} className="flex items-center gap-1">
-          <span className="w-7 shrink-0 text-right text-xs text-stone-400 font-mono">
+          <span className="w-7 shrink-0 text-right font-mono text-xs text-stone-400">
             {moveNumber}.
           </span>
           {white ? (
             <button
               className={chipClass(white)}
               onClick={() => onSelect(white.index)}
-              title={readOnly ? undefined : 'Click to view position • Q to add question'}
+              title={readOnly ? undefined : 'Click to view position - Q to add question'}
             >
               {white.san}
               {questionPlyIndices.has(white.index) && (
-                <span className="ml-1 text-amber-500 text-xs">★</span>
+                <span className="ml-1 text-xs text-amber-500">*</span>
               )}
             </button>
           ) : (
-            <span className="px-2 py-0.5 text-stone-300">…</span>
+            <span className="px-2 py-0.5 text-stone-300">...</span>
           )}
           {black ? (
             <button
               className={chipClass(black)}
               onClick={() => onSelect(black.index)}
-              title={readOnly ? undefined : 'Click to view position • Q to add question'}
+              title={readOnly ? undefined : 'Click to view position - Q to add question'}
             >
               {black.san}
               {questionPlyIndices.has(black.index) && (
-                <span className="ml-1 text-amber-500 text-xs">★</span>
+                <span className="ml-1 text-xs text-amber-500">*</span>
               )}
             </button>
           ) : null}

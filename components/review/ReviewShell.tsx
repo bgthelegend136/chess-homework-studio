@@ -162,33 +162,37 @@ export function ReviewShell({
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-stone-50">
-      <div className="mx-auto max-w-5xl w-full p-6 flex flex-col gap-6">
-        <header className="flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-6xl w-full p-4 sm:p-6 flex flex-col gap-4">
+        <header className="sticky top-0 z-10 -mx-4 -mt-4 border-b border-stone-200 bg-stone-50/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-wide text-stone-500">
               Answer Analysis
             </p>
-            <h1 className="text-xl font-semibold text-stone-800">
+            <h1 className="text-lg font-semibold text-stone-800">
               {assignment.title}
             </h1>
-            <p className="text-sm text-stone-500 mt-0.5">
+            <p className="text-xs text-stone-500 mt-0.5">
               Student: {assignment.students.name}
             </p>
           </div>
-          <Badge variant="success">Completed</Badge>
-        </header>
-
-        <section className="rounded-lg border border-stone-200 bg-white shadow-sm p-4">
-          <div className="mb-3 flex flex-col gap-1">
-            <h2 className="text-sm font-semibold text-stone-800">
-              Bulk shortcuts
-            </h2>
-            <p className="text-xs text-stone-500">
-              Fill buttons only set missing fields. Changes are not saved until you click
-              Save review.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 lg:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="success">Completed</Badge>
+              {wrongTagCounts.length === 0 ? (
+                <span className="text-xs text-stone-500">No recurring weak tags</span>
+              ) : (
+                wrongTagCounts.map(([tag, count]) => (
+                  <span
+                    key={tag}
+                    className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-800"
+                  >
+                    {tag}: {count} wrong
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               size="sm"
@@ -249,30 +253,13 @@ export function ReviewShell({
             >
               Clear evaluations
             </Button>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-stone-200 bg-white shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-stone-800 mb-3">
-            Wrong themes
-          </h2>
-          {wrongTagCounts.length === 0 ? (
-            <p className="text-sm text-stone-500">
-              No recurring weak tags from checked answers yet.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {wrongTagCounts.map(([tag, count]) => (
-                <span
-                  key={tag}
-                  className="rounded border border-red-200 bg-red-50 px-2.5 py-1 text-sm text-red-800"
-                >
-                  {tag}: {count} wrong
-                </span>
-              ))}
+            <Button variant="primary" size="sm" onClick={handleSubmit} disabled={saving}>
+              {saving ? 'Saving...' : 'Save review'}
+            </Button>
             </div>
-          )}
-        </section>
+          </div>
+          </div>
+        </header>
 
         {questions.length === 0 ? (
           <div className="rounded-lg border border-dashed border-stone-300 bg-white p-8 text-center text-stone-500">
@@ -304,13 +291,13 @@ export function ReviewShell({
                   </div>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-6 p-5">
-                  <div className="shrink-0 w-full lg:w-auto">
+                <div className="grid gap-5 p-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+                  <div className="w-full lg:sticky lg:top-32 lg:self-start">
                     <Board
                       fen={q.fen}
                       orientation={q.side_to_move === 'w' ? 'white' : 'black'}
                       draggable={false}
-                      width={420}
+                      width={380}
                       arrows={arrows}
                     />
                     {ans?.student_move && (
@@ -320,7 +307,7 @@ export function ReviewShell({
                     )}
                   </div>
 
-                  <div className="flex-1 flex flex-col gap-4 min-w-0">
+                  <div className="flex min-w-0 flex-col gap-4">
                     <div>
                       <label className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1 block">
                         Student move
@@ -451,6 +438,7 @@ export function ReviewShell({
                                 <button
                                   type="button"
                                   key={opt}
+                                  aria-pressed={active}
                                   onClick={() =>
                                     setPerQuestionEval((prev) => ({
                                       ...prev,

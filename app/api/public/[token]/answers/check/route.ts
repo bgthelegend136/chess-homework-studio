@@ -61,7 +61,16 @@ export async function POST(
       : storedAttemptCount;
   if (attemptCount >= 2) {
     return NextResponse.json(
-      { error: 'This answer is already locked.' },
+      {
+        error: 'This answer is already locked.',
+        acceptedMoves: [],
+        invalidAcceptedMoves: [],
+        canCheck: false,
+        isCorrect: answer?.is_correct ?? null,
+        message: 'This answer is already locked.',
+        attemptCount,
+        canRetry: false,
+      },
       { status: 409 },
     );
   }

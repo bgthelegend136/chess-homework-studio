@@ -24,11 +24,12 @@ export function PgnPanel({
   const [saving, setSaving] = useState(false);
 
   const questionPlyIndices = new Set(
-    state.questions.map((q) => {
-      // Find the ply whose FEN matches this question's FEN
-      const ply = state.plies.find((p) => p.fen === q.fen);
-      return ply?.index ?? -1;
-    }).filter((i) => i !== -1),
+    state.questions
+      .map((q) => {
+        const ply = state.plies.find((p) => p.fen === q.fen);
+        return ply?.index ?? -1;
+      })
+      .filter((i) => i !== -1),
   );
   const questionFens = new Set(state.questions.map((q) => q.fen));
 
@@ -60,7 +61,10 @@ export function PgnPanel({
   if (editing || !state.plies.length) {
     return (
       <div className="flex flex-col gap-3">
-        <label htmlFor="pgn-input" className="text-xs font-medium uppercase tracking-wide text-stone-500">
+        <label
+          htmlFor="pgn-input"
+          className="text-xs font-medium uppercase tracking-wide text-stone-500"
+        >
           PGN
         </label>
         <textarea
@@ -69,20 +73,20 @@ export function PgnPanel({
           onChange={(e) => setDraft(e.target.value)}
           rows={7}
           placeholder={`[Event "..."]\n1. e4 e5 2. Nf3 ...`}
-          className="w-full rounded border border-stone-300 bg-white px-3 py-2 text-xs font-mono text-stone-800 placeholder:text-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
+          className="w-full resize-none rounded border border-stone-300 bg-white px-3 py-2 text-xs font-mono text-stone-800 placeholder:text-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
           disabled={readOnly}
           onKeyDown={(e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleParse();
           }}
         />
         {(localError || state.parseError) && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">
+          <p className="rounded border border-red-100 bg-red-50 p-2 text-xs text-red-600">
             {localError ?? state.parseError}
           </p>
         )}
         {!readOnly && (
           <Button variant="secondary" onClick={handleParse} disabled={saving}>
-            {saving ? 'Saving…' : 'Paste / re-parse'}
+            {saving ? 'Saving...' : 'Paste / re-parse'}
           </Button>
         )}
       </div>
@@ -90,7 +94,7 @@ export function PgnPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
+    <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
       <div className="flex items-center justify-between">
         <label className="text-xs font-medium uppercase tracking-wide text-stone-500">
           Move list
@@ -101,16 +105,16 @@ export function PgnPanel({
               setDraft(state.pgn);
               setEditing(true);
             }}
-            className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+            className="text-xs text-stone-400 transition-colors hover:text-stone-600"
           >
             edit PGN
           </button>
         )}
       </div>
       <p className="text-xs text-stone-400">
-        Click a move → board jumps{readOnly ? '' : ' · Q to add question'}
+        Click a move to jump the board{readOnly ? '' : ' - Q to add question'}
       </p>
-      <div className="overflow-y-auto flex-1 pr-1">
+      <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
         <MoveList
           plies={state.plies}
           moveTree={state.moveTree}

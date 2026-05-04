@@ -49,7 +49,7 @@ export default async function OpeningTrainPage({ params, searchParams }: Props) 
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-6">
+    <div className="mx-auto w-full max-w-[1240px] p-4 sm:p-6">
       <div className="mb-6 text-sm text-stone-500">
         <Link href="/openings" className="hover:text-stone-800">
           Openings

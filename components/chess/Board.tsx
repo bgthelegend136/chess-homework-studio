@@ -11,6 +11,8 @@ interface BoardProps {
   draggable?: boolean;
   width?: number;
   arrows?: Array<[string, string, string?]>;
+  lastMoveSquares?: [string, string] | null;
+  highlightSquares?: string[];
 }
 
 export function Board({
@@ -20,6 +22,8 @@ export function Board({
   draggable = false,
   width = 480,
   arrows,
+  lastMoveSquares,
+  highlightSquares = [],
 }: BoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [boardWidth, setBoardWidth] = useState(width);
@@ -104,6 +108,23 @@ export function Board({
   const legalTargets = getLegalTargets(activeSquare);
   const checkedKingSquare = getCheckedKingSquare();
   const customSquareStyles: Record<string, CSSProperties> = {};
+
+  if (lastMoveSquares) {
+    for (const square of lastMoveSquares) {
+      customSquareStyles[square] = {
+        backgroundColor: 'rgba(250, 204, 21, 0.42)',
+        boxShadow: 'inset 0 0 0 2px rgba(217,119,6,0.42)',
+      };
+    }
+  }
+
+  for (const square of highlightSquares) {
+    customSquareStyles[square] = {
+      ...customSquareStyles[square],
+      backgroundColor: 'rgba(59, 130, 246, 0.28)',
+      boxShadow: 'inset 0 0 0 2px rgba(37, 99, 235, 0.45)',
+    };
+  }
 
   if (checkedKingSquare) {
     customSquareStyles[checkedKingSquare] = {

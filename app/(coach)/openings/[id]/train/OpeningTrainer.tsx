@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { Chess } from 'chess.js';
+import { CheckCircle2, Eye, Play, XCircle } from 'lucide-react';
 import { Board } from '@/components/chess/Board';
 import { Button } from '@/components/ui/Button';
 import { validateMove } from '@/lib/chess/validateMove';
@@ -56,6 +58,54 @@ type Feedback =
       comment: string | null;
     };
 
+type TrainerPhase =
+  | 'awaiting-user'
+  | 'saving-attempt'
+  | 'showing-correct'
+  | 'showing-opponent'
+  | 'revealed-answer'
+  | 'line-complete';
+
+type DisplayPosition = {
+  fen: string;
+  phase: TrainerPhase;
+  promptPositionId: string;
+  lastMove?: {
+    san: string;
+    from: string;
+    to: string;
+    kind: 'user' | 'opponent' | 'answer';
+  };
+};
+
+type NextSelection = {
+  position: TrainingPosition | null;
+  lineIndex: number;
+  cursor: number;
+  complete: boolean;
+};
+
+function playSan(
+  fen: string,
+  san: string | null,
+): DisplayPosition['lastMove'] & { fen: string } | null {
+  if (!san) return null;
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move(san, { strict: false });
+    if (!move) return null;
+    return {
+      fen: chess.fen(),
+      san: move.san,
+      from: move.from,
+      to: move.to,
+      kind: 'answer',
+    };
+  } catch {
+    return null;
+  }
+}
+
 function annotationBoost(annotation: OpeningAnnotation | null): number {
   if (annotation === '!!') return 15;
   if (annotation === '!') return 8;
@@ -93,6 +143,26 @@ function chooseByPriority(
   return filtered[cursor % filtered.length] ?? sorted[0];
 }
 
+function initialTrainingPosition(
+  positions: TrainingPosition[],
+  lineLeafId?: string,
+): TrainingPosition | null {
+  if (lineLeafId) {
+    const chain = buildLineChain(positions, lineLeafId);
+    if (chain.length > 0) return chain[0];
+  }
+  return positions.length > 0 ? chooseByPriority(positions, null, 0) : null;
+}
+
+function displayFor(position: TrainingPosition | null): DisplayPosition | null {
+  if (!position) return null;
+  return {
+    fen: position.fen,
+    phase: 'awaiting-user',
+    promptPositionId: position.id,
+  };
+}
+
 export function OpeningTrainer({
   repertoire,
   positions,
@@ -107,18 +177,17 @@ export function OpeningTrainer({
   const [lineIndex, setLineIndex] = useState(0);
   const [lineComplete, setLineComplete] = useState(false);
   const [cursor, setCursor] = useState(0);
-  const [current, setCurrent] = useState<TrainingPosition | null>(() => {
-    if (lineLeafId) {
-      const chain = buildLineChain(positions, lineLeafId);
-      if (chain.length > 0) return chain[0];
-    }
-    return positions.length > 0 ? chooseByPriority(positions, null, 0) : null;
-  });
+  const [current, setCurrent] = useState<TrainingPosition | null>(() =>
+    initialTrainingPosition(positions, lineLeafId),
+  );
+  const [display, setDisplay] = useState<DisplayPosition | null>(() =>
+    displayFor(initialTrainingPosition(positions, lineLeafId)),
+  );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0 });
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const advanceRef = useRef<(() => void) | null>(null);
+  const timersRef = useRef<number[]>([]);
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string, TrainingPosition[]>();
@@ -140,13 +209,34 @@ export function OpeningTrainer({
     return map;
   }, [positionState]);
 
+  function clearAdvanceTimers() {
+    for (const timer of timersRef.current) window.clearTimeout(timer);
+    timersRef.current = [];
+  }
+
+  function scheduleAdvance(callback: () => void, delay: number) {
+    const timer = window.setTimeout(() => {
+      timersRef.current = timersRef.current.filter((item) => item !== timer);
+      callback();
+    }, delay);
+    timersRef.current.push(timer);
+  }
+
   useEffect(() => {
-    if (!feedback || feedback.kind !== 'correct') return;
-    const timer = setTimeout(() => {
-      advanceRef.current?.();
-    }, 650);
-    return () => clearTimeout(timer);
-  }, [feedback]);
+    clearAdvanceTimers();
+    setPositionState(positions);
+    const initial = initialTrainingPosition(positions, lineLeafId);
+    setLineIndex(0);
+    setLineComplete(false);
+    setCursor(0);
+    setCurrent(initial);
+    setDisplay(displayFor(initial));
+    setFeedback(null);
+    setError(null);
+    setSessionStats({ correct: 0, incorrect: 0 });
+    return clearAdvanceTimers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, lineLeafId, repertoire.id]);
 
   if (!current) {
     return (
@@ -173,6 +263,7 @@ export function OpeningTrainer({
     );
   }
 
+  const activeCurrent = current;
   const accuracyTotal = sessionStats.correct + sessionStats.incorrect;
   const accuracy =
     accuracyTotal > 0 ? Math.round((sessionStats.correct / accuracyTotal) * 100) : 0;
@@ -184,26 +275,113 @@ export function OpeningTrainer({
     return chooseByPriority(children, null, cursor);
   }
 
-  function advance(fromPosition: TrainingPosition) {
-    setFeedback(null);
+  function nextSelection(fromPosition: TrainingPosition): NextSelection {
     if (isLineMode) {
       const nextIndex = lineIndex + 1;
       if (nextIndex < lineChain.length) {
-        setLineIndex(nextIndex);
-        setCurrent(lineChain[nextIndex]);
-      } else {
-        setLineComplete(true);
+        return {
+          position: lineChain[nextIndex],
+          lineIndex: nextIndex,
+          cursor,
+          complete: false,
+        };
       }
-      return;
+      return { position: null, lineIndex, cursor, complete: true };
     }
+
     const child = chooseChild(fromPosition);
     if (child) {
-      setCurrent(child);
+      return { position: child, lineIndex, cursor, complete: false };
+    }
+
+    const nextCursor = cursor + 1;
+    return {
+      position: chooseByPriority(positionState, fromPosition.id, nextCursor),
+      lineIndex,
+      cursor: nextCursor,
+      complete: false,
+    };
+  }
+
+  function commitSelection(selection: NextSelection, fallbackFen: string) {
+    setFeedback(null);
+    if (selection.complete || !selection.position) {
+      setLineComplete(true);
+      setDisplay({
+        fen: fallbackFen,
+        phase: 'line-complete',
+        promptPositionId: activeCurrent.id,
+      });
       return;
     }
-    const nextCursor = cursor + 1;
-    setCursor(nextCursor);
-    setCurrent(chooseByPriority(positionState, fromPosition.id, nextCursor));
+
+    setLineIndex(selection.lineIndex);
+    setCursor(selection.cursor);
+    setCurrent(selection.position);
+    setDisplay({
+      fen: selection.position.fen,
+      phase: 'awaiting-user',
+      promptPositionId: selection.position.id,
+    });
+  }
+
+  function continueToNextPosition(fromPosition: TrainingPosition, afterFen: string) {
+    const selection = nextSelection(fromPosition);
+    if (selection.complete || !selection.position) {
+      scheduleAdvance(() => commitSelection(selection, afterFen), 450);
+      return;
+    }
+
+    const opponentMove = playSan(afterFen, selection.position.opponent_move_san);
+    if (opponentMove) {
+      setFeedback(null);
+      setLineIndex(selection.lineIndex);
+      setCursor(selection.cursor);
+      setCurrent(selection.position);
+      setDisplay({
+        fen: opponentMove.fen,
+        phase: 'showing-opponent',
+        promptPositionId: selection.position.id,
+        lastMove: {
+          san: opponentMove.san,
+          from: opponentMove.from,
+          to: opponentMove.to,
+          kind: 'opponent',
+        },
+      });
+      scheduleAdvance(() => commitSelection(selection, opponentMove.fen), 650);
+      return;
+    }
+
+    scheduleAdvance(() => commitSelection(selection, selection.position!.fen), 250);
+  }
+
+  function revealCorrectMove() {
+    if (!feedback || feedback.kind !== 'incorrect') return;
+    const answerMove = playSan(activeCurrent.fen, feedback.correctMove);
+    if (answerMove) {
+      setDisplay({
+        fen: answerMove.fen,
+        phase: 'revealed-answer',
+        promptPositionId: activeCurrent.id,
+        lastMove: {
+          san: answerMove.san,
+          from: answerMove.from,
+          to: answerMove.to,
+          kind: 'answer',
+        },
+      });
+    }
+    setFeedback({
+      ...feedback,
+      revealed: true,
+    });
+  }
+
+  function continueAfterIncorrect() {
+    if (!feedback || feedback.kind !== 'incorrect') return;
+    const answerMove = playSan(activeCurrent.fen, feedback.correctMove);
+    continueToNextPosition(activeCurrent, answerMove?.fen ?? activeCurrent.fen);
   }
 
   function updateProgress(positionId: string, wasCorrect: boolean, response: {
@@ -233,12 +411,17 @@ export function OpeningTrainer({
   }
 
   function handleDrop(from: string, to: string): boolean {
-    if (!current || feedback || isPending) return false;
+    if (!current || display?.phase !== 'awaiting-user' || isPending) return false;
     const result = validateMove(current.fen, from, to);
     if (!result) return false;
 
     const snapshot = current;
     setError(null);
+    setDisplay({
+      fen: display?.fen ?? current.fen,
+      phase: 'saving-attempt',
+      promptPositionId: snapshot.id,
+    });
     startTransition(async () => {
       try {
         const response = await recordOpeningAttempt({
@@ -254,18 +437,33 @@ export function OpeningTrainer({
           incorrect: prev.incorrect + (wasCorrect ? 0 : 1),
         }));
         updateProgress(snapshot.id, wasCorrect, response);
-        advanceRef.current = () => advance(snapshot);
 
         if (wasCorrect) {
-          const atLineEnd = isLineMode
-            ? lineIndex + 1 >= lineChain.length
-            : !chooseChild(snapshot);
+          const selection = nextSelection(snapshot);
+          const atLineEnd = selection.complete;
+          setDisplay({
+            fen: result.afterFen,
+            phase: 'showing-correct',
+            promptPositionId: snapshot.id,
+            lastMove: {
+              san: result.san,
+              from: result.from,
+              to: result.to,
+              kind: 'user',
+            },
+          });
           setFeedback({
             kind: 'correct',
             lineComplete: atLineEnd,
             comment: snapshot.comment,
           });
+          scheduleAdvance(() => continueToNextPosition(snapshot, result.afterFen), 550);
         } else {
+          setDisplay({
+            fen: snapshot.fen,
+            phase: 'awaiting-user',
+            promptPositionId: snapshot.id,
+          });
           setFeedback({
             kind: 'incorrect',
             revealed: false,
@@ -274,6 +472,11 @@ export function OpeningTrainer({
           });
         }
       } catch (e: unknown) {
+        setDisplay({
+          fen: snapshot.fen,
+          phase: 'awaiting-user',
+          promptPositionId: snapshot.id,
+        });
         setError(e instanceof Error ? e.message : 'Could not record attempt');
       }
     });
@@ -282,14 +485,17 @@ export function OpeningTrainer({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,520px)_1fr]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,560px)_1fr]">
       <div>
         <Board
-          fen={current.fen}
+          fen={display?.fen ?? current.fen}
           orientation={repertoire.side_to_train}
-          draggable={!feedback && !isPending}
+          draggable={display?.phase === 'awaiting-user' && !isPending}
           onPieceDrop={handleDrop}
-          width={520}
+          width={560}
+          lastMoveSquares={
+            display?.lastMove ? [display.lastMove.from, display.lastMove.to] : null
+          }
         />
       </div>
 
@@ -306,6 +512,19 @@ export function OpeningTrainer({
               ? `Opponent just played ${current.opponent_move_san}.`
               : 'Start of repertoire.'}
           </p>
+          {display?.phase === 'saving-attempt' && (
+            <p className="mt-2 text-sm font-medium text-blue-700">Saving move...</p>
+          )}
+          {display?.phase === 'showing-opponent' && display.lastMove && (
+            <p className="mt-2 text-sm font-medium text-blue-700">
+              Opponent replies {display.lastMove.san}
+            </p>
+          )}
+          {current.comment && (
+            <div className="mt-3 rounded border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-950">
+              {current.comment}
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 text-stone-700">
               {current.progress?.mastery_level ?? 'new'}
@@ -338,11 +557,21 @@ export function OpeningTrainer({
                 : 'border-red-200 bg-red-50 text-red-900'
             }`}
           >
-            <p className="font-semibold">
-              {feedback.kind === 'correct' ? 'Correct' : 'Wrong'}
+            <p className="flex items-center gap-2 font-semibold">
+              {feedback.kind === 'correct' ? (
+                <>
+                  <CheckCircle2 className="size-5" />
+                  Correct
+                </>
+              ) : (
+                <>
+                  <XCircle className="size-5" />
+                  Wrong
+                </>
+              )}
             </p>
 
-            {feedback.kind === 'correct' && feedback.lineComplete && feedback.comment && (
+            {feedback.kind === 'correct' && feedback.comment && (
               <p className="mt-2 text-sm leading-6">{feedback.comment}</p>
             )}
 
@@ -350,14 +579,10 @@ export function OpeningTrainer({
               <Button
                 type="button"
                 variant="secondary"
-                className="mt-3 bg-white"
-                onClick={() =>
-                  setFeedback({
-                    ...feedback,
-                    revealed: true,
-                  })
-                }
+                className="mt-3 gap-2 bg-white"
+                onClick={revealCorrectMove}
               >
+                <Eye className="size-4" />
                 Show answer
               </Button>
             )}
@@ -373,9 +598,10 @@ export function OpeningTrainer({
                 <Button
                   type="button"
                   variant="secondary"
-                  className="mt-3 bg-white"
-                  onClick={() => advanceRef.current?.()}
+                  className="mt-3 gap-2 bg-white"
+                  onClick={continueAfterIncorrect}
                 >
+                  <Play className="size-4" />
                   Continue
                 </Button>
               </>

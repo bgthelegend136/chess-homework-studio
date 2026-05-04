@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { Play } from 'lucide-react';
 import { requireCoach } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { OpeningPosition, OpeningPositionProgress, OpeningRepertoire } from '@/lib/types';
@@ -47,7 +48,7 @@ export default async function OpeningDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-full bg-stone-100">
-      <div className="mx-auto w-full max-w-6xl p-6">
+      <div className="mx-auto w-full max-w-[1240px] p-4 sm:p-6">
         <div className="mb-6 text-sm text-stone-500">
           <Link href="/openings" className="hover:text-stone-800">
             Openings
@@ -71,8 +72,9 @@ export default async function OpeningDetailPage({ params }: Props) {
             </div>
             <Link
               href={`/openings/${params.id}/train`}
-              className="rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
             >
+              <Play className="size-4" />
               Start training
             </Link>
           </div>

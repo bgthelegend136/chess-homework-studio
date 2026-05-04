@@ -7,3 +7,4 @@ tsconfig.tsbuildinfo
 .claude/settings.local.json 
 playwright-report/
 test-results/
+.claude/worktrees/

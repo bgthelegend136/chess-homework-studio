@@ -149,7 +149,7 @@ export default async function StudentDetailPage({ params }: Props) {
   const checkedCorrectPct = checkedTotal > 0 ? Math.round((checkedCorrectCount / checkedTotal) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-4xl w-full p-6">
+    <div className="mx-auto max-w-6xl w-full p-4 sm:p-6">
       <div className="text-sm text-stone-500 mb-4">
         <Link href="/students" className="hover:text-stone-800">
           Students
@@ -158,26 +158,43 @@ export default async function StudentDetailPage({ params }: Props) {
         <span className="text-stone-800">{student.name}</span>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-stone-800">{student.name}</h1>
-          {student.email && (
-            <p className="text-sm text-stone-500 mt-1">{student.email}</p>
-          )}
-          <p className="text-xs text-stone-400 mt-1">
-            Added {new Date(student.created_at).toLocaleDateString()}
-          </p>
-        </div>
+      <div className="mb-5 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold text-stone-800">{student.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-500">
+              {student.email && <span>{student.email}</span>}
+              <span>Added {new Date(student.created_at).toLocaleDateString()}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {groups.length === 0 ? (
+                <span className="rounded border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-500">
+                  No groups
+                </span>
+              ) : (
+                groups.map((group) => (
+                  <Link
+                    key={group.id}
+                    href={`/groups/${group.id}`}
+                    className="rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100"
+                  >
+                    {group.name}
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
         <Link
           href={`/assignments/new?student=${student.id}`}
-          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
+          className="inline-flex shrink-0 items-center justify-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
         >
           + New assignment
         </Link>
+        </div>
       </div>
 
       {student.notes && (
-        <div className="mb-6 rounded border border-stone-200 bg-white p-4">
+        <div className="mb-5 rounded border border-stone-200 bg-white p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-1">
             Notes
           </p>
@@ -185,29 +202,8 @@ export default async function StudentDetailPage({ params }: Props) {
         </div>
       )}
 
-      <div className="mb-6 rounded border border-stone-200 bg-white p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-2">
-          Groups
-        </p>
-        {groups.length === 0 ? (
-          <p className="text-sm text-stone-500">This student is not in any groups.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {groups.map((group) => (
-              <Link
-                key={group.id}
-                href={`/groups/${group.id}`}
-                className="rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-sm text-amber-800 hover:bg-amber-100"
-              >
-                {group.name}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Counts */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-6">
+      <div className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {[
           ['not_opened', 'Not opened', counts.not_opened],
           ['in_progress', 'In progress', counts.in_progress],
@@ -215,15 +211,15 @@ export default async function StudentDetailPage({ params }: Props) {
         ].map(([key, label, count]) => (
           <div
             key={key}
-            className="rounded border border-stone-200 bg-white px-3 py-2 text-center"
+            className="rounded border border-stone-200 bg-white px-4 py-3"
           >
-            <div className="text-xl font-semibold text-stone-800">{count}</div>
-            <div className="text-xs text-stone-500">{label}</div>
+            <div className="text-2xl font-semibold text-stone-800">{count}</div>
+            <div className="text-xs uppercase tracking-wide text-stone-500">{label}</div>
           </div>
         ))}
       </div>
 
-      <div className="mb-6 rounded border border-stone-200 bg-white p-4">
+      <div className="mb-5 rounded border border-stone-200 bg-white p-4 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-wide text-stone-500 mb-3">
           Visual performance snapshot
         </p>
@@ -373,9 +369,9 @@ export default async function StudentDetailPage({ params }: Props) {
                 <p className="text-sm font-medium text-stone-800 truncate">{a.title}</p>
                 <p className="text-xs text-stone-500 mt-0.5">
                   Created {new Date(a.created_at).toLocaleDateString()}
-                  {a.due_date && ` · Due ${new Date(a.due_date).toLocaleDateString()}`}
+                  {a.due_date && ` - Due ${new Date(a.due_date).toLocaleDateString()}`}
                   {a.reviewed_at &&
-                    ` · Completed ${new Date(a.reviewed_at).toLocaleDateString()}`}
+                    ` - Completed ${new Date(a.reviewed_at).toLocaleDateString()}`}
                 </p>
               </div>
               <Badge variant={STATUS_VARIANT[a.status]}>{STATUS_LABEL[a.status]}</Badge>

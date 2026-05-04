@@ -1,5 +1,6 @@
 'use client';
 import { useReducer, useEffect, useCallback, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { creatorReducer, initialCreatorState } from '@/creator-state/reducer';
 import type { DraftQuestion } from '@/creator-state/reducer';
 import { parsePgn } from '@/lib/chess/parsePgn';
@@ -143,6 +144,7 @@ export function CreatorShell({
     state.editingIndex !== null ? state.questions[state.editingIndex] : null;
 
   const [copied, setCopied] = useState(false);
+  const [pgnCollapsed, setPgnCollapsed] = useState(false);
 
   function copyLink() {
     navigator.clipboard.writeText(studentLink).then(() => {
@@ -190,17 +192,45 @@ export function CreatorShell({
         </button>
       </div>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="w-56 shrink-0 border-r border-stone-200 bg-white flex flex-col overflow-y-auto p-4 gap-3">
-          <PgnPanel
-            state={state}
-            dispatch={dispatch}
-            onPgnSave={onSavePgn}
-            readOnly={pgnLocked}
-          />
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden xl:flex-row">
+        <div
+          className={`min-w-0 shrink-0 border-r border-stone-200 bg-white flex flex-col overflow-hidden transition-[width] ${
+            pgnCollapsed ? 'xl:w-12' : 'xl:w-[300px]'
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-stone-100 px-3 py-2">
+            {!pgnCollapsed && (
+              <span className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                PGN
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setPgnCollapsed((value) => !value)}
+              className="inline-flex size-8 items-center justify-center rounded border border-stone-200 bg-white text-stone-500 hover:bg-stone-50"
+              aria-label={pgnCollapsed ? 'Expand PGN panel' : 'Collapse PGN panel'}
+              title={pgnCollapsed ? 'Expand PGN panel' : 'Collapse PGN panel'}
+            >
+              {pgnCollapsed ? (
+                <PanelLeftOpen className="size-4" />
+              ) : (
+                <PanelLeftClose className="size-4" />
+              )}
+            </button>
+          </div>
+          {!pgnCollapsed && (
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4">
+              <PgnPanel
+                state={state}
+                dispatch={dispatch}
+                onPgnSave={onSavePgn}
+                readOnly={pgnLocked}
+              />
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 flex items-start justify-center p-4 overflow-auto bg-stone-50">
+        <div className="flex min-w-0 flex-1 items-start justify-center overflow-auto bg-stone-50 p-4 xl:min-w-[560px]">
           <BoardPanel
             state={state}
             dispatch={dispatch}
@@ -208,7 +238,7 @@ export function CreatorShell({
           />
         </div>
 
-        <div className="w-72 shrink-0 border-l border-stone-200 bg-white flex flex-col overflow-y-auto p-4 gap-4">
+        <div className="min-h-0 shrink-0 border-l border-stone-200 bg-white flex flex-col overflow-y-auto p-4 gap-4 xl:w-[400px]">
           {editingQuestion ? (
             <QuestionEditor
               question={editingQuestion}

@@ -55,12 +55,30 @@ export async function PUT(
 
   const { data: existing } = await supabase
     .from('answers')
-    .select('id, attempt_count, hint_used')
+    .select('id, attempt_count, hint_used, is_correct')
     .eq('question_id', question_id)
     .maybeSingle();
 
   const existingAttemptCount = existing?.attempt_count ?? 0;
   const existingHintUsed = existing?.hint_used ?? false;
+
+  const assignmentLocked =
+    assignment.status === 'submitted' || assignment.status === 'reviewed';
+  const answerLocked =
+    assignmentLocked || existingAttemptCount >= 2 || existing?.is_correct === true;
+
+  if (answerLocked) {
+    return NextResponse.json(
+      {
+        error: 'This answer is already locked.',
+        locked: true,
+        attemptCount: existingAttemptCount,
+        isCorrect: existing?.is_correct ?? null,
+      },
+      { status: 409 },
+    );
+  }
+
   const update: Record<string, unknown> = {
     question_id,
     updated_at: new Date().toISOString(),

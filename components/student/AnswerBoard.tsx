@@ -81,7 +81,7 @@ export function AnswerBoard({
       <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
         <span>
           {sideToMove === 'b' ? 'Black' : 'White'} to move
-          {sideToMove === 'b' && ' · board flipped to your side'}
+          {sideToMove === 'b' && ' - board flipped to your side'}
         </span>
         {currentMove && !readOnly && (
           <Button
@@ -90,7 +90,7 @@ export function AnswerBoard({
             onClick={resetMove}
             aria-label="Reset move"
           >
-            ↺ Reset move
+            Reset move
           </Button>
         )}
       </div>

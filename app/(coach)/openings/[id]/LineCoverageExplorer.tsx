@@ -1,13 +1,74 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { Chess } from 'chess.js';
+import {
+  BookOpen,
+  Eye,
+  EyeOff,
+  MessageSquare,
+  Play,
+} from 'lucide-react';
 import { Board } from '@/components/chess/Board';
 import type {
   OpeningMasteryLevel,
   OpeningPosition,
   OpeningPositionProgress,
 } from '@/lib/types';
+
+const MOVE_PREVIEW_LIMIT = 15;
+
+interface PlyEntry {
+  key: string;
+  label: string;
+  san: string;
+  fen: string;
+  positionId: string;
+  kind: 'opponent' | 'expected';
+}
+
+function buildPlyEntries(positions: PositionWithProgress[]): PlyEntry[] {
+  const entries: PlyEntry[] = [];
+  for (const position of positions) {
+    if (!position.expected_move_san) continue;
+    const expectedPly = position.ply_index;
+    const expectedMoveNumber = Math.floor(expectedPly / 2) + 1;
+    const expectedIsWhite = expectedPly % 2 === 0;
+    if (position.opponent_move_san) {
+      const opponentPly = expectedPly - 1;
+      const opponentMoveNumber = Math.floor(opponentPly / 2) + 1;
+      const opponentIsWhite = opponentPly % 2 === 0;
+      const prefix = opponentIsWhite ? `${opponentMoveNumber}.` : `${opponentMoveNumber}...`;
+      entries.push({
+        key: `${position.id}-opp`,
+        label: `${prefix} ${position.opponent_move_san}`,
+        san: position.opponent_move_san,
+        fen: position.fen,
+        positionId: position.id,
+        kind: 'opponent',
+      });
+    }
+    let expectedFen = position.fen;
+    try {
+      const chess = new Chess(position.fen);
+      chess.move(position.expected_move_san);
+      expectedFen = chess.fen();
+    } catch {
+      // fall back to the pre-move fen if the SAN can't be replayed
+    }
+    const prefix = expectedIsWhite ? `${expectedMoveNumber}.` : `${expectedMoveNumber}...`;
+    entries.push({
+      key: `${position.id}-exp`,
+      label: `${prefix} ${position.expected_move_san}`,
+      san: position.expected_move_san,
+      fen: expectedFen,
+      positionId: position.id,
+      kind: 'expected',
+    });
+  }
+  return entries;
+}
 
 type LineStatus = 'untrained' | 'weak' | 'mastered' | 'trained';
 type LineFilter = 'all' | 'trained' | 'mastered' | 'weak' | 'untrained' | 'notMastered';
@@ -210,6 +271,57 @@ export function LineCoverageExplorer({
     selectedLine?.trainablePositions[0] ??
     null;
 
+  const plies = useMemo<PlyEntry[]>(
+    () => (selectedLine ? buildPlyEntries(selectedLine.trainablePositions) : []),
+    [selectedLine],
+  );
+  const [selectedPlyKey, setSelectedPlyKey] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedPlyKey(plies[0]?.key ?? null);
+  }, [plies]);
+  const activePlyIndex = Math.max(
+    0,
+    plies.findIndex((ply) => ply.key === selectedPlyKey),
+  );
+  const activePly = plies[activePlyIndex] ?? null;
+  const activePlyButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (plies.length === 0) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      setSelectedPlyKey((current) => {
+        const idx = plies.findIndex((ply) => ply.key === current);
+        const safeIdx = idx < 0 ? 0 : idx;
+        const nextIdx =
+          event.key === 'ArrowRight'
+            ? Math.min(plies.length - 1, safeIdx + 1)
+            : Math.max(0, safeIdx - 1);
+        return plies[nextIdx]?.key ?? current;
+      });
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [plies]);
+
+  useEffect(() => {
+    activePlyButtonRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedPlyKey]);
+
   const uniqueTrainable = new Map<string, PositionWithProgress>();
   for (const line of lines) {
     for (const position of line.trainablePositions) {
@@ -272,27 +384,31 @@ export function LineCoverageExplorer({
 
   return (
     <section className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { label: 'Lines', value: String(lines.length), filter: 'all' as const },
-          { label: 'Trained', value: String(trainedLines), filter: 'trained' as const },
-          { label: 'Mastered', value: String(masteredLines), filter: 'mastered' as const },
-          { label: 'Weak', value: String(weakLines), filter: 'weak' as const },
-          { label: 'Untrained', value: String(untrainedLines), filter: 'untrained' as const },
-          { label: 'Needs master', value: String(notMasteredLines), filter: 'notMastered' as const },
-        ].map(({ label, value, filter }) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => selectFilter(filter)}
-            className={`rounded-lg bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-              activeFilter === filter ? 'ring-2 ring-blue-400' : ''
-            }`}
-          >
-            <p className="text-xs uppercase tracking-wide text-stone-500">{label}</p>
-            <p className="mt-1 text-xl font-semibold text-stone-900">{value}</p>
-          </button>
-        ))}
+      <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white p-1 shadow-sm">
+        <div className="flex min-w-max gap-1">
+          {[
+            { label: 'Lines', value: String(lines.length), filter: 'all' as const },
+            { label: 'Trained', value: String(trainedLines), filter: 'trained' as const },
+            { label: 'Mastered', value: String(masteredLines), filter: 'mastered' as const },
+            { label: 'Weak', value: String(weakLines), filter: 'weak' as const },
+            { label: 'Untrained', value: String(untrainedLines), filter: 'untrained' as const },
+            { label: 'Needs master', value: String(notMasteredLines), filter: 'notMastered' as const },
+          ].map(({ label, value, filter }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => selectFilter(filter)}
+              className={`rounded-md px-3 py-2 text-left transition-colors ${
+                activeFilter === filter
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-stone-600 hover:bg-stone-50'
+              }`}
+            >
+              <p className="text-[11px] uppercase tracking-wide opacity-75">{label}</p>
+              <p className="text-lg font-semibold leading-5">{value}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="rounded-lg bg-white px-4 py-3 shadow-sm">
@@ -320,8 +436,8 @@ export function LineCoverageExplorer({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 space-y-6">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="min-w-0 space-y-3">
           {filteredLines.length === 0 && (
             <div className="rounded-lg bg-white p-8 text-center text-sm text-stone-500 shadow-sm">
               No lines match this filter.
@@ -353,25 +469,34 @@ export function LineCoverageExplorer({
                   }}
                   className="cursor-pointer"
                 >
-                  <div className="flex items-center justify-between gap-4 border-b border-stone-100 px-5 py-4">
-                    <h3 className="text-lg font-semibold text-stone-900">
+                  <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
+                    <h3 className="text-base font-semibold text-stone-900">
                       {line.label}
                     </h3>
-                    <div className="flex items-center gap-4 text-stone-400">
-                      <span title="Study">▮▮</span>
-                      <span title="Video">●▮</span>
+                    <div className="flex items-center gap-2 text-stone-400">
+                      {line.positions.some((position) => position.comment) && (
+                        <MessageSquare
+                          className="size-4"
+                          aria-label="Line has imported PGN comments"
+                        />
+                      )}
+                      <BookOpen className="size-4" aria-label="Study line" />
                     </div>
                   </div>
 
-                  <div className="px-5 py-5">
-                    <p className="font-mono text-base leading-7 text-stone-900">
-                      <span className="mr-2 inline-block size-3 rounded-full bg-stone-950" />
-                      {line.movePreview}
+                  <div className="px-4 py-3">
+                    <p className="truncate font-mono text-sm leading-6 text-stone-900">
+                      <span className="mr-2 inline-block size-3 rounded-full bg-stone-950 align-middle" />
+                      {(() => {
+                        const tokens = line.movePreview.split(' ');
+                        if (tokens.length <= MOVE_PREVIEW_LIMIT) return line.movePreview;
+                        return `${tokens.slice(0, MOVE_PREVIEW_LIMIT).join(' ')} ...`;
+                      })()}
                     </p>
 
-                    <div className="mt-6 flex items-end justify-between gap-4">
+                    <div className="mt-3 flex items-end justify-between gap-4">
                       <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex items-center gap-3">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span
                             className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium capitalize ${statusClasses[line.status]}`}
                           >
@@ -379,7 +504,7 @@ export function LineCoverageExplorer({
                           </span>
                           <span className="text-sm text-stone-500">
                             {line.seenCount}/{line.trainablePositions.length} seen
-                            {' · '}
+                            {' - '}
                             {line.masteredCount} mastered
                           </span>
                         </div>
@@ -404,15 +529,22 @@ export function LineCoverageExplorer({
                             event.stopPropagation();
                             toggleExpanded(line.id);
                           }}
-                          className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+                          className="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                          aria-label={isExpanded ? 'Hide line moves' : 'Show line moves'}
+                          title={isExpanded ? 'Hide line moves' : 'Show line moves'}
                         >
-                          {isExpanded ? 'Hide' : 'View'}
+                          {isExpanded ? (
+                            <EyeOff className="size-4" />
+                          ) : (
+                            <Eye className="size-4" />
+                          )}
                         </button>
                         <Link
                           href={`/openings/${repertoireId}/train?line=${line.id}`}
                           onClick={(event) => event.stopPropagation()}
-                          className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-stone-900 hover:bg-blue-50"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-stone-900 hover:bg-blue-50"
                         >
+                          <Play className="size-4" />
                           Learn
                         </Link>
                         <span className="absolute -right-2 -top-2 rounded-full bg-sky-200 px-2 py-0.5 text-xs font-medium text-sky-900">
@@ -428,10 +560,21 @@ export function LineCoverageExplorer({
                     <ol className="space-y-2">
                       {line.trainablePositions.map((position, index) => {
                         const status = positionStatus(position);
+                        const isActivePosition =
+                          isSelected && activePly?.positionId === position.id;
                         return (
                           <li
                             key={position.id}
-                            className="rounded border border-stone-200 bg-white p-3"
+                            ref={(el) => {
+                              if (isActivePosition && el) {
+                                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                              }
+                            }}
+                            className={`rounded border p-3 transition-colors ${
+                              isActivePosition
+                                ? 'border-amber-300 bg-amber-50'
+                                : 'border-stone-200 bg-white'
+                            }`}
                           >
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div>
@@ -483,35 +626,38 @@ export function LineCoverageExplorer({
           <h3 className="mt-1 text-sm font-semibold text-stone-800">
             {selectedLine?.label ?? 'Line'}
           </h3>
-          {selectedPosition && (
+          {(activePly || selectedPosition) && (
             <div className="mt-3">
               <Board
-                fen={selectedPosition.fen}
+                fen={activePly?.fen ?? selectedPosition!.fen}
                 orientation={sideToTrain}
                 draggable={false}
-                width={320}
+                width={420}
               />
             </div>
           )}
+          <p className="mt-2 text-[11px] text-stone-400">
+            Left / Right to step through moves
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {selectedLine?.trainablePositions.map((position, index) => {
-              const active = selectedPosition?.id === position.id;
+            {plies.map((ply) => {
+              const active = ply.key === activePly?.key;
               return (
                 <button
-                  key={position.id}
+                  key={ply.key}
+                  ref={active ? activePlyButtonRef : undefined}
                   type="button"
-                  onClick={() => setSelectedPositionId(position.id)}
+                  onClick={() => {
+                    setSelectedPlyKey(ply.key);
+                    setSelectedPositionId(ply.positionId);
+                  }}
                   className={`rounded border px-2 py-1 text-xs ${
                     active
                       ? 'border-amber-300 bg-amber-50 text-amber-900'
                       : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
                   }`}
                 >
-                  {index + 1}.{' '}
-                  {position.opponent_move_san
-                    ? `${position.opponent_move_san} `
-                    : ''}
-                  {position.expected_move_san}
+                  {ply.label}
                 </button>
               );
             })}
